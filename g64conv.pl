@@ -1,5 +1,16 @@
 #!/usr/bin/perl
 
+### Do not remove the following lines, they ensure that
+### perl2exe (http://www.perl2exe.com ) can be used to
+### make an executable tha does not need an installed
+### version of perl.
+
+#perl2exe_include "PerlIO.pm"
+#perl2exe_include "PerlIO/scalar.pm"
+#perl2exe_include "utf8.pm"
+#perl2exe_include "unicore/Heavy.pl"
+#perl2exe_include "unicore/lib/Perl/_PerlIDS.pl"
+
 use strict;
 
 if (@ARGV < 2)
