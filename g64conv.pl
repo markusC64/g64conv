@@ -518,7 +518,7 @@ sub txttog64
       my $tmp = pack("B*", $trackContent);
       my $siz = length($tmp);
       my $tmpSize = pack("S", $siz);
-      $g64 .= $tmpSize.$tmp."\0\0";
+      $g64 .= $tmpSize.$tmp.("\0" x ($tracksizeHdr-$siz));
    }
    
    $g64;
