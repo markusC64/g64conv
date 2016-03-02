@@ -48,7 +48,7 @@ sub readfile
    my $file;
    local $/;
    undef $/;
-   open($file, "<", $filename);
+   open($file, "<", $filename) or die "Canno read file\n";
    my $ret = <$file>,
    close $file;
    $ret;
@@ -60,7 +60,7 @@ sub readfileRaw
    my $file;
    local $/;
    undef $/;
-   open($file, "< :raw", $filename);
+   open($file, "< :raw", $filename) or die "Canno read file\n";
    my $ret = <$file>,
    close $file;
    $ret;
@@ -71,7 +71,7 @@ sub writefile
    my ($content, $filename) = @_;
 
    my $file;
-   open($file, ">", $filename);
+   open($file, ">", $filename) or die "Canno write file\n";
    print $file $content;
    close $file;
 }
@@ -81,7 +81,7 @@ sub writefileRaw
    my ($content, $filename) = @_;
 
    my $file;
-   open($file, "> :raw", $filename);
+   open($file, "> :raw", $filename) or die "Canno write file\n";
    print $file $content;
    close $file;
 }
@@ -201,6 +201,10 @@ sub parseTrack
       {
          $ret .= "   ; header\n";
          $ret .= "   gcr 08\n";
+	 
+	 my $trk = undef;
+	 my $sec = undef;
+	 
          for (my $i=0; $i<7; $i++)
 	 {
             $trackPart =~ s/^(.{5})//;
@@ -224,7 +228,9 @@ sub parseTrack
 	       $ret .= "      ; id1\n" if $i == 4;
 	       if ((defined $a) && (defined $b))
 	       {
-	          $ret .= "      gcr $a$b\n" if $i < 5 ;
+	          $ret .= "      gcr $a$b\n" if $i < 5;
+		  $sec = "$a$b" if $i == 1;
+		  $trk = "$a$b" if $i == 2;
 	       }
 	       else
 	       {
@@ -241,7 +247,10 @@ sub parseTrack
 	       $ret .= "   end-checksum\n" if $i == 4;
 	    }
 	 }
-         
+	 if (defined($trk) && defined($sec))
+	 { 
+            $ret .= "   ; Trk ".hex($trk)." Sec ".hex($sec)."\n";
+	 }
       }
       elsif ($a.$b eq '07')
       {
@@ -460,7 +469,8 @@ sub txttog64
 	 {
 	    my $tmp = unpack("H*", chr($checksum));
 	    my $tmp2 = nibbleToGCR( substr($tmp, 0, 1) ) . nibbleToGCR( substr($tmp, 1, 1) );
-	    $curTrack =~ s/-{10}/$tmp/g;
+
+	    $curTrack =~ s/-{10}/$tmp2/g;
 	 }
 	 $checksumBlock = 0;
       }
