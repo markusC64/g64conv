@@ -15,8 +15,9 @@ use strict;
 
 if (@ARGV < 2)
 {
-   die "Syntax: g64conv.pl <from> <to> [mode]\n".
-       "supporting .g64 and .txt as file types.\n".
+   die "Syntax: g64conv.pl <from.g64> <to.txt> [mode]\n".
+       "        g64conv.pl <from.txt> <to.g64>\n".
+       "        g64conv.pl <fromTemplate.txt> <to.g64> <from.d64>\n".
        "mode may be 0 (hex only) or 1 (gcr parsed, default).\n";
 }
 
@@ -24,10 +25,10 @@ if (@ARGV < 2)
 my $from = $ARGV[0];
 my $to = $ARGV[1];
 my $level = $ARGV[2];
-$level = 1 unless defined $level;
 
 if ($from =~ /.g64/i)
 {
+   $level = 1 unless defined $level;
    my $g64 = readfileRaw($from);
    my $txt = g64totxt($g64, $level);
    writefile($txt, $to);
@@ -35,7 +36,9 @@ if ($from =~ /.g64/i)
 else
 {
    my $txt = readfile($from);
-   my $g64 = txttog64($txt);
+   my $d64 = undef;
+   $d64 = readfileRaw($level) if defined $level;
+   my $g64 = txttog64($txt, $d64);
    writefileRaw($g64, $to);
 }
 
@@ -375,7 +378,7 @@ sub nibbleToGCR
 
 sub txttog64
 {
-   my $text = $_[0];
+   my ($text, $d64) = @_;
    my $file;
    my $line;
    my $tracksizeHdr = 0;
@@ -494,6 +497,28 @@ sub txttog64
 	    }
 	 }
       }
+      elsif ($line =~ /^extgcr (.*) (.*)$/ && defined $d64)
+      {
+         my $pos = hex($1);
+	 my $size = hex($2);
+	 
+         my $par = unpack("H*", substr($d64, $pos, $size));
+	 
+	 for my $i (split //, $par)
+	 {
+	    $curTrack .= nibbleToGCR($i);
+	 }
+	 
+	 if ($checksumBlock == 1)
+	 {
+            my $tmp = pack("H*", $par);
+	    my @tmp = unpack("C*", $tmp);
+	    for my $i (@tmp)
+	    {
+	       $checksum ^= $i;
+	    }
+	 }
+      }
       elsif ($line =~ /^checksum(.*)$/)
       {
          my $par = $1;
@@ -517,7 +542,7 @@ sub txttog64
       }
       else
       {
-         print "Unknown line: $line\n";
+         die "Unknown line: $line\n";
       }
    }
    close $file;

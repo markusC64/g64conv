@@ -6,3 +6,7 @@ readable form.
 You can edit it with just a simple text editor or use your favourite textual
 diff tool to find differences between two images.
 And finally you can convert back the textual representation to a g64 gcr image.
+
+NEW
+
+- can be used to convert d64 to g64 using a template file.
