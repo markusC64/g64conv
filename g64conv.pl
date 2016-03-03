@@ -499,7 +499,11 @@ sub txttog64
          my $par = $1;
 	 $par =~ s/ //g;
 	 
-	 if ($par ne '')
+	 if (length($par) == 10)
+	 {
+            $curTrack .= $par;
+	 }
+	 elsif ($par ne '')
 	 {
 	    for my $i (split //, $par)
 	    {
