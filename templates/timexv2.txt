@@ -11367,15 +11367,15 @@ track 18
    ; header
    gcr 08
    begin-checksum
-      checksum
+      checksum 08
       ; sector
       gcr 00
       ; track
       gcr 0f
       ; id2
-      extgcr 165a3 1
+      gcr 1a
       ; id1
-      extgcr 165a2 1
+      gcr f0
    end-checksum
    gcr f0
    gcr f0
