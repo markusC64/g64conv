@@ -195,11 +195,21 @@ sub parseTrack
 	 $trackRest = "";
       }
       
-      $trackPart =~ s/^(.{5})//;
+      my $v1 = $trackPart =~ s/^(.{5})//;
       my $c = $1;
+      unless ($v1)
+      {
+         $c = $trackPart;
+	 $trackPart = "";
+      }
       my $a = parseGCR($c);
-      $trackPart =~ s/^(.{5})//;
+      my $v2 = $trackPart =~ s/^(.{5})//;
       my $d = $1;
+      unless ($v2)
+      {
+         $d = $trackPart;
+	 $trackPart = "";
+      }
       my $b = parseGCR($d);
 
       if ($a.$b eq '08')
@@ -212,10 +222,21 @@ sub parseTrack
 	 
          for (my $i=0; $i<7; $i++)
 	 {
-            $trackPart =~ s/^(.{5})//;
+            my $v3 = $trackPart =~ s/^(.{5})//;
+	    unless ($v3)
+	    {
+                  $ret .= ";   block aborted\n";
+		  last;	       
+	    }
 	    my $e = $1;
             my $a = parseGCR($1);
-            $trackPart =~ s/^(.{5})//;
+            my $v4 = $trackPart =~ s/^(.{5})//;
+	    unless ($v4)
+	    {
+		  $ret .= "   bits $e\n";
+                  $ret .= ";   block aborted\n";
+		  last;	       
+	    }
 	    my $f = $1;
             my $b = parseGCR($1);
 	    
@@ -266,10 +287,23 @@ sub parseTrack
 	 my $gcr = "";
          for (my $i=0; $i<259; $i++)
 	 {
-            $trackPart =~ s/^(.{5})//;
+            my $v3 = $trackPart =~ s/^(.{5})//;
+	    unless ($v3)
+	    {
+	          $ret .= "      gcr$gcr\n" if $gcr;
+                  $ret .= ";   block aborted\n";
+		  last;	       
+	    }
 	    my $e = $1;
             my $a = parseGCR($1);
-            $trackPart =~ s/^(.{5})//;
+            my $v4 = $trackPart =~ s/^(.{5})//;
+	    unless ($v4)
+	    {
+	          $ret .= "      gcr$gcr\n" if $gcr;
+		  $ret .= "   bits $e\n";
+                  $ret .= ";   block aborted2\n";
+		  last;	       
+	    }
 	    my $f = $1;
             my $b = parseGCR($1);
 	    
@@ -291,7 +325,8 @@ sub parseTrack
 	          $ret .= "      gcr$gcr\n" if $gcr;
 	          $ret .= "      checksum $a$b\n" if (defined $a) && (defined $b);
 	          $ret .= "      checksum $e$f\n" unless (defined $a) && (defined $b);
-                 $ret .= "   end-checksum\n";
+                  $ret .= "   end-checksum\n";
+		  $gcr = "";
 	    }
 	    else
 	    {
@@ -428,9 +463,12 @@ sub txttog64
 	 my $trk = ($curTrackNo+1)/2;
 	 die "Track $trk length $len bits is not a multilpe of 8 bits\n" if $len % 8;
 	 
+	 my $tmp = (length($curTrack)-$beginat) % length($curTrack); 
+	 my $curTrack2 = substr($curTrack, $tmp) . substr($curTrack, 0, $tmp);
+	 
          if ($curTrackNo)
 	 {
-	    $tracks[$curTrackNo] = [ $speed, $curTrack ];
+	    $tracks[$curTrackNo] = [ $speed, $curTrack2 ];
 	 }
          $checksumBlock = 0;
       }
