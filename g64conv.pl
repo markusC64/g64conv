@@ -177,7 +177,9 @@ sub parseTrack
    
    while ($track ne "")
    {
-      $track =~ s/^(1{10,})//;
+      # Remark: No need to test for > 9 bits cause we arranged that $track is starting with sync
+      # which may be continued from last "trackPart"!
+      $track =~ s/^(1+)//;
       $ret .= "   sync " . length($1) . "\n";
       my $trackPart;
       my $trackRest;
@@ -423,7 +425,8 @@ sub txttog64
       elsif ($line eq "end-track")
       {
          my $len = length($curTrack);
-	 die "Track length $len bits is not a multilpe of 8 bits\n" if $len % 8;
+	 my $trk = ($curTrackNo+1)/2;
+	 die "Track $trk length $len bits is not a multilpe of 8 bits\n" if $len % 8;
 	 
          if ($curTrackNo)
 	 {
