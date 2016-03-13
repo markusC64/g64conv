@@ -170,15 +170,25 @@ sub parseTrack
       $track = "$3$1$2";
       $beginat -= $offset;
       $beginat += length($track) if $beginat < 0;
-         
    }
+   
+   if ($track =~ m/^(1+0101010111.*?)(1{9}.*)$/ )
+   {
+      my $offset = length($1);
+      $track = "$2$1";
+      $beginat += $offset;
+   }
+   
+   $track =~ m/^(1{9})(.*)/;
+   $track = "$2$1";
+   $beginat += 9;
 
    $ret .= "   begin-at $beginat\n";
    
    while ($track ne "")
    {
       # Remark: No need to test for > 9 bits cause we arranged that $track is starting with sync
-      # which may be continued from last "trackPart"!
+      # which is continued from last "trackPart"!
       $track =~ s/^(1+)//;
       $ret .= "   sync " . length($1) . "\n";
       my $trackPart;
