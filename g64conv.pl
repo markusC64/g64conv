@@ -17,6 +17,7 @@ if (@ARGV < 2)
 {
    die "Syntax: g64conv.pl <from.g64> <to.txt> [mode]\n".
        "        g64conv.pl <from.txt> <to.g64>\n".
+       "        g64conv.pl <from.d64> <to.g64>\n".
        "        g64conv.pl <fromTemplate.txt> <to.g64> <from.d64>\n".
        "mode may be 0 (hex only) or 1 (gcr parsed, default).\n";
 }
@@ -32,6 +33,13 @@ if ($from =~ /.g64/i)
    my $g64 = readfileRaw($from);
    my $txt = g64totxt($g64, $level);
    writefile($txt, $to);
+}
+elsif ($from =~ /.d64/i)
+{
+   my $txt = stddisk();
+   my $d64 = readfile($from);
+   my $g64 = txttog64($txt, $d64);
+   writefileRaw($g64, $to);
 }
 else
 {
@@ -164,6 +172,17 @@ sub parseTrack
    $track = "$2$3$1";
    $beginat = length($1);
    
+   if ($track =~ m/^(1+0101010111.*?)(1{9}.*)$/ )
+   {
+      my $offset = length($1);
+      $track = "$2$1";
+      $beginat += $offset;
+   }
+   
+   $track =~ m/^(1{8})(.*)/;
+   $track = "$2$1";
+   $beginat += 8;
+
    if ($track =~m/^(.*?)(1{9})(1+)$/)
    {
       my $offset = length($3);
@@ -172,17 +191,6 @@ sub parseTrack
       $beginat += length($track) if $beginat < 0;
    }
    
-   if ($track =~ m/^(1+0101010111.*?)(1{9}.*)$/ )
-   {
-      my $offset = length($1);
-      $track = "$2$1";
-      $beginat += $offset;
-   }
-   
-   $track =~ m/^(1{9})(.*)/;
-   $track = "$2$1";
-   $beginat += 9;
-
    $ret .= "   begin-at $beginat\n";
    
    while ($track ne "")
@@ -623,4 +631,53 @@ sub txttog64
    }
    
    $g64;
+}
+
+sub stddisk
+{
+   my $ret = "no-tracks 84\ntrack-size 7928\n";
+   my $i;
+   my $o = 0;
+   for ($i=1; $i<36; $i++)
+   {
+      my $s = 21;
+      $s = 19 if $i >= 18;
+      $s = 18 if $i >= 25;
+      $s = 17 if $i >= 31;
+      
+      $ret .= "track $i\n";
+      $ret .= "   speed 3\n" if $s == 21;
+      $ret .= "   speed 2\n" if $s == 19;
+      $ret .= "   speed 1\n" if $s == 18;
+      $ret .= "   speed 0\n" if $s == 17;
+      $ret .= "   begin-at 0\n";
+      
+      my $j;
+      for ($j = 0; $j < $s; $j++)
+      {
+         $ret .="   sync 32\n   gcr 08\n"
+	       ."   begin-checksum\n      checksum\n"
+	       ."      gcr ".sprintf("%02x", $j)."\n"      
+	       ."      gcr ".sprintf("%02x", $i)."\n"
+	       ."      extgcr 165a3 1\n"
+	       ."      extgcr 165a2 1\n"
+	       ."   end-checksum\n"
+	       ."   gcr 0f\n"
+	       ."   gcr 0f\n"
+	       ."   bytes 55 55 55 55 55 55 55 55 55 ff\n"
+	       ."\n"
+	       ."   sync 32\n   gcr 07\n"
+	       ."   begin-checksum\n"
+	       ."      extgcr ".sprintf("%2x", $o)." 100\n"
+	       ."      checksum\n"
+	       ."   end-checksum\n"
+	       ."   gcr 00\n"
+	       ."   gcr 00\n"
+	       ."   bytes 55 55 55 55 55 55 55 55 ff\n";
+	       
+         $o += 256;
+      }
+      $ret .="end-track\n\n";
+   }
+   $ret;
 }
