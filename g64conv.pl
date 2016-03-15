@@ -27,21 +27,21 @@ my $from = $ARGV[0];
 my $to = $ARGV[1];
 my $level = $ARGV[2];
 
-if ($from =~ /.g64/i)
+if ($from =~ /\.g64$/i && $to =~ /\.txt$/)
 {
    $level = 1 unless defined $level;
    my $g64 = readfileRaw($from);
    my $txt = g64totxt($g64, $level);
    writefile($txt, $to);
 }
-elsif ($from =~ /.d64/i)
+elsif ($from =~ /\.d64$/i && $to =~ /\.g64$/)
 {
    my $txt = stddisk();
    my $d64 = readfile($from);
    my $g64 = txttog64($txt, $d64);
    writefileRaw($g64, $to);
 }
-else
+elsif ($from =~ /\.txt$/i && $to =~ /\.g64$/)
 {
    my $txt = readfile($from);
    my $d64 = undef;
@@ -49,7 +49,10 @@ else
    my $g64 = txttog64($txt, $d64);
    writefileRaw($g64, $to);
 }
-
+else
+{
+   die "Unknown conversion\n";
+}
 
 
 
