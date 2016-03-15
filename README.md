@@ -10,3 +10,4 @@ And finally you can convert back the textual representation to a g64 gcr image.
 NEW
 
 - can be used to convert d64 to g64 using a template file.
+- can be used to convert g64 back to d64

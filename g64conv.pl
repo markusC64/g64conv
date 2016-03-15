@@ -49,6 +49,12 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.g64$/)
    my $g64 = txttog64($txt, $d64);
    writefileRaw($g64, $to);
 }
+elsif ($from =~ /\.g64$/i && $to =~ /\.d64$/)
+{
+   my $g64 = readfileRaw($from);
+   my $d64 = g64tod64($g64);
+   writefileRaw($d64, $to);
+}
 else
 {
    die "Unknown conversion\n";
@@ -683,4 +689,266 @@ sub stddisk
       $ret .="end-track\n\n";
    }
    $ret;
+}
+
+
+
+
+sub parseTrack2
+{
+   my $track = $_[0];
+   
+   my %sector = ();
+   
+   unless ($track =~ /^(.*?)(1111111111)(.*)$/ )
+   {
+      return {};
+   }
+
+   $track = "$2$3$1";
+   
+   if ($track =~ m/^(1+0101010111.*?)(1{9}.*)$/ )
+   {
+      $track = "$2$1";
+   }
+   
+   $track =~ m/^(1{8})(.*)/;
+   $track = "$2$1";
+
+   if ($track =~m/^(.*?)(1{9})(1+)$/)
+   {
+      $track = "$3$1$2";
+   }
+   
+   my $sector = undef;
+
+   while ($track ne "")
+   {
+      # Remark: No need to test for > 9 bits cause we arranged that $track is starting with sync
+      # which is continued from last "trackPart"!
+      $track =~ s/^(1+)//;
+
+      my $trackPart;
+      my $trackRest;
+      
+      if ($track =~ m/^(.*?1{9})(1.*)$/)
+      {
+         $trackPart = $1;
+	 $trackRest = $2;
+      }
+      else
+      {
+         $trackPart = $track;
+	 $trackRest = "";
+      }
+      
+      my $v1 = $trackPart =~ s/^(.{5})//;
+      my $c = $1;
+      unless ($v1)
+      {
+         $c = $trackPart;
+	 $trackPart = "";
+      }
+      my $a = parseGCR($c);
+      my $v2 = $trackPart =~ s/^(.{5})//;
+      my $d = $1;
+      unless ($v2)
+      {
+         $d = $trackPart;
+	 $trackPart = "";
+      }
+      my $b = parseGCR($d);
+      
+      if ($a.$b eq '08')
+      {
+	 my $trk = undef;
+	 my $sec = undef;
+	 
+	 my $checksum = 0;
+	 
+         for (my $i=0; $i<7; $i++)
+	 {
+            my $v3 = $trackPart =~ s/^(.{5})//;
+	    unless ($v3)
+	    {
+		  last;	       
+	    }
+	    my $e = $1;
+            my $a = parseGCR($1);
+            my $v4 = $trackPart =~ s/^(.{5})//;
+	    unless ($v4)
+	    {
+		  last;	       
+	    }
+	    my $f = $1;
+            my $b = parseGCR($1);
+	    
+	    if ($i < 5)
+	    {
+               if ((defined $a) && (defined $b) && (defined $checksum))
+	       {
+	          $checksum ^= hex("$a$b")
+	       }
+	       else
+	       {
+	          $checksum = undef;
+	       }
+	    }
+	    
+	    if ((defined $a) && (defined $b))
+	    {
+               $sec = "$a$b" if $i == 1;
+	       $trk = "$a$b" if $i == 2;
+	    }
+	 }
+	 if (defined($trk) && defined($sec))
+	 {
+	    if (defined $checksum)
+	    {
+	       if ($checksum == 0)
+	       {
+	          $sector = [ hex($trk), hex($sec) ];
+	       }
+	       else
+	       {
+	          $sector{hex($trk)}{hex($sec)} = 9;
+	       }
+	    }
+	    else
+	    {
+	       $sector{hex($trk)}{hex($sec)} = 5;
+	    }
+	 }
+      }
+      elsif ($a.$b eq '07')
+      {
+	 my $gcr = "";
+	 my $checksum = 0;
+         for (my $i=0; $i<257; $i++)
+	 {
+            my $v3 = $trackPart =~ s/^(.{5})//;
+	    unless ($v3)
+	    {
+		  last;	       
+	    }
+	    my $e = $1;
+            my $a = parseGCR($1);
+            my $v4 = $trackPart =~ s/^(.{5})//;
+	    unless ($v4)
+	    {
+		  last;	       
+	    }
+	    my $f = $1;
+            my $b = parseGCR($1);
+	    
+	    if ($i <= 256)
+	    {
+	       if ((defined $a) && (defined $b))
+	       {
+	          $gcr .= "$a$b" if $i < 256;
+		  $checksum ^= hex("$a$b");
+	       }
+	       else
+	       {
+	          $gcr = 5;
+		  last;
+	       }
+	    }
+	 }
+
+         if ($checksum)
+	 {
+	    $sector{ $sector->[0] }{ $sector->[1] } = 5;
+	 }
+	 else
+	 {
+            $sector{ $sector->[0] }{ $sector->[1] } = pack("H*", $gcr) if (defined $sector) && $gcr;
+	 }
+         $sector = undef;
+      }
+      else
+      {
+         $sector{ $sector->[0] }{ $sector->[1] } = 4 if defined $sector; 
+         $sector = undef;
+      }
+      
+      $track = $trackRest;
+   }
+
+   \%sector;
+}
+
+
+sub g64tod64
+{
+   my ($g64, $level) = @_;
+   my $ret = ("\xDE\xAD\xBE\xEF" x 64) x 683;
+   my $error = "\x02" x 683;
+   
+   my $signature = substr($g64, 0, 8);
+   return undef unless $signature eq 'GCR-1541';
+
+   return undef unless substr($g64, 8, 1) eq "\0";
+   
+   my $notracks = unpack("C", substr($g64, 9, 1));
+   my $tracksizeHdr = unpack("S", substr($g64, 0xA, 2));
+   
+   my @tracks = ( 0, 21, 42, 63, 84, 105, 126, 147, 168, 189, 210, 231, 252, 273, 294, 315, 336, 357, 376, 395,
+                  414, 433, 452, 471, 490, 508, 526, 544, 562, 580, 598, 615, 632, 649, 666, 683, 700, 717, 734,
+		  751 ); 
+   my @sectors = ( 21, 21, 21, 21, 21,  21, 21, 21, 21, 21,
+                   21, 21, 21, 21, 21,  21, 21, 19, 19, 19,
+		   19, 19, 19, 19, 18,  18, 18, 18, 18, 18,
+		   17, 17, 17, 17, 17,  17, 17, 17, 17, 17);
+
+   for (my $i=1; $i<=2*35; $i+=2)
+   {
+      my $track = ($i+1)/2;
+      my $trackTablePosition = 8+4*$i;
+      my $trackPosition = unpack("L", substr($g64, $trackTablePosition, 4));
+      next unless $trackPosition;
+      my $trackSize = unpack("S", substr($g64, $trackPosition, 2));
+      my $trackContent = substr($g64, $trackPosition+2, $trackSize);
+      
+      my $trackContentHex = unpack("H*", $trackContent);
+      $trackContentHex =~ s/(..)/ $1/gc;
+      
+      my $speedTableOffset = 8+4*$notracks + 4*$i;
+      my $speed = unpack("L", substr($g64, $speedTableOffset, 4));
+      
+      my $trackRet = "track $track\n";
+
+      my $tmp = $trackContentHex;
+      $tmp =~ s/ //g;
+      my $trackBin = pack("H*", $tmp);
+      my $trackContentBin = unpack("B*", $trackBin);
+      $tmp = parseTrack2($trackContentBin);
+      
+      for my $t (sort { $a <=> $b } keys %$tmp)
+      {
+         next if $t < 1;
+	 next if $t > 35;
+	 my $tmp2 = $tmp->{$t};
+	 for my $s (sort { $a <=> $b } keys %$tmp2)
+	 {
+	    next if $s > $sectors[$t-1];
+	    my $offset1 = $tracks[$t-1] + $s;
+	    my $offset2 = $offset1 * 256;
+	    my $content = $tmp2->{$s};
+	    if (length($content) == 256)
+	    {
+	       substr($ret, $offset2, 256) = $content;
+	       substr($error, $offset1, 1) = "\0";
+	    }
+	    else
+	    {
+	       substr($error, $offset1, 1) = chr($content);
+	    }
+	 } 
+      }      
+   }
+   
+   return $ret if $error eq "\0" x 683;
+   
+   $ret.$error;
 }
