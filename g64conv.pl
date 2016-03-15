@@ -247,6 +247,8 @@ sub parseTrack
 	 my $trk = undef;
 	 my $sec = undef;
 	 
+         my $checksum = 0;
+
          for (my $i=0; $i<7; $i++)
 	 {
             my $v3 = $trackPart =~ s/^(.{5})//;
@@ -272,6 +274,7 @@ sub parseTrack
 	       $ret .= "   begin-checksum\n";
 	       $ret .= "      checksum $a$b\n" if (defined $a) && (defined $b);
 	       $ret .= "      checksum $e$f\n" unless (defined $a) && (defined $b);
+	       $checksum = hex("$a$b") if (defined $a) && (defined $b);
 	    }
 	    else
 	    {
@@ -282,6 +285,7 @@ sub parseTrack
 	       if ((defined $a) && (defined $b))
 	       {
 	          $ret .= "      gcr $a$b\n" if $i < 5;
+		  $checksum ^= hex("$a$b") if $i < 5;
 		  $sec = "$a$b" if $i == 1;
 		  $trk = "$a$b" if $i == 2;
 	       }
@@ -298,6 +302,7 @@ sub parseTrack
 	          $ret .= "   bits $e$f\n" if $i > 4 ;
 	       }
 	       $ret .= "   end-checksum\n" if $i == 4;
+	       $ret .= "   ; invalid checksum\n" if $checksum && $i == 4;
 	    }
 	 }
 	 if (defined($trk) && defined($sec))
@@ -311,6 +316,9 @@ sub parseTrack
          $ret .= "   gcr 07\n";
 
          $ret .= "   begin-checksum\n";
+
+         my $checksum = 0;
+
 	 my $gcr = "";
          for (my $i=0; $i<259; $i++)
 	 {
@@ -339,6 +347,7 @@ sub parseTrack
 	       if ((defined $a) && (defined $b))
 	       {
 	          $gcr .= " $a$b";
+		  $checksum ^= hex("$a$b");
 	       }
 	       else
 	       {
@@ -353,6 +362,8 @@ sub parseTrack
 	          $ret .= "      checksum $a$b\n" if (defined $a) && (defined $b);
 	          $ret .= "      checksum $e$f\n" unless (defined $a) && (defined $b);
                   $ret .= "   end-checksum\n";
+		  $checksum ^= hex("$a$b") if (defined $a) && (defined $b);
+		  $ret .= "   ; invalid checksum\n" if $checksum;
 		  $gcr = "";
 	    }
 	    else
