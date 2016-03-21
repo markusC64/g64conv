@@ -822,11 +822,13 @@ sub parseTrack2
 	       }
 	       else
 	       {
+	          $sector = undef;
 	          $sector{hex($trk)}{hex($sec)} = 9;
 	       }
 	    }
 	    else
 	    {
+	       $sector = undef;
 	       $sector{hex($trk)}{hex($sec)} = 5;
 	    }
 	 }
