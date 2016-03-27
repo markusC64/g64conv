@@ -138,6 +138,7 @@ sub g64totxt
       my $trackRet = "track $track\n";
       if ($level == 0)
       {
+         $trackRet .= "   ; length $trackSize\n";
          $trackRet .= "   speed $speed\n   bytes$trackContentHex\n";
 	 $trackRet .= "end-track\n\n";
       }
@@ -675,6 +676,14 @@ sub stddisk
       my $j;
       for ($j = 0; $j < $s; $j++)
       {
+         my $extraspace = "";
+	 if ($j == $s-1)
+	 {
+	    $extraspace = "   bytes" . (" 55" x 90) . "\n" if $i < 18;
+	    $extraspace = "   bytes" . (" 55" x 264) . "\n" if $i >= 18 && $i < 25;
+	    $extraspace = "   bytes" . (" 55" x 150) . "\n" if $i >= 25 && $i < 31;
+	    $extraspace = "   bytes" . (" 55" x 96) . "\n" if $i > 30;
+         }
          $ret .="   sync 32\n   gcr 08\n"
 	       ."   begin-checksum\n      checksum\n"
 	       ."      gcr ".sprintf("%02x", $j)."\n"      
@@ -693,6 +702,7 @@ sub stddisk
 	       ."   end-checksum\n"
 	       ."   gcr 00\n"
 	       ."   gcr 00\n"
+	       .$extraspace
 	       ."   bytes 55 55 55 55 55 55 55 55 ff\n";
 	       
          $o += 256;
