@@ -37,7 +37,7 @@ if ($from =~ /\.g64$/i && $to =~ /\.txt$/)
 elsif ($from =~ /\.d64$/i && $to =~ /\.g64$/)
 {
    my $txt = stddisk();
-   my $d64 = readfile($from);
+   my $d64 = readfileRaw($from);
    my $g64 = txttog64($txt, $d64);
    writefileRaw($g64, $to);
 }
