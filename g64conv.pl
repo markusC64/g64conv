@@ -19,7 +19,8 @@ if (@ARGV < 2)
        "        g64conv.pl <from.txt> <to.g64>\n".
        "        g64conv.pl <from.d64> <to.g64>\n".
        "        g64conv.pl <fromTemplate.txt> <to.g64> <from.d64>\n".
-       "mode may be 0 (hex only) or 1 (gcr parsed, default).\n";
+       "mode may be 0 (hex only) or 1 (gcr parsed, default).\n".
+       "        or p64 for p64 compatible flux possition list\n";
 }
 
 
@@ -31,7 +32,9 @@ if ($from =~ /\.g64$/i && $to =~ /\.txt$/)
 {
    $level = 1 unless defined $level;
    my $g64 = readfileRaw($from);
-   my $txt = g64totxt($g64, $level);
+   my $txt;
+   $txt = g64top64txt($g64) if $level eq "p64";
+   $txt = g64totxt($g64, $level) unless $level eq "p64";
    writefile($txt, $to);
 }
 elsif ($from =~ /\.d64$/i && $to =~ /\.g64$/)
@@ -974,4 +977,53 @@ sub g64tod64
    return $ret if $error eq "\0" x 683;
    
    $ret.$error;
+}
+
+sub g64top64txt
+{
+   my ($g64, ) = @_;
+   my $ret = "";
+   
+   my $signature = substr($g64, 0, 8);
+   return undef unless $signature eq 'GCR-1541';
+
+   return undef unless substr($g64, 8, 1) eq "\0";
+   
+   my $notracks = unpack("C", substr($g64, 9, 1));
+   my $tracksizeHdr = unpack("S", substr($g64, 0xA, 2));
+   
+   # my %p64data = ();
+   
+   for (my $i=1; $i<$notracks; $i++)
+   {
+      my $track = ($i+1)/2;
+      my $p64track = $i+1;
+      my $trackTablePosition = 8+4*$i;
+      my $trackPosition = unpack("L", substr($g64, $trackTablePosition, 4));
+      next unless $trackPosition;
+      my $trackSize = unpack("S", substr($g64, $trackPosition, 2));
+      my $trackContent = substr($g64, $trackPosition+2, $trackSize);
+      
+      my $trackContentHex = unpack("H*", $trackContent);
+      $trackContentHex =~ s/(..)/ $1/gc;
+      my $trackContentBin = unpack("B*", $trackContent);
+      
+      my $speedTableOffset = 8+4*$notracks + 4*$i;
+      my $speed = unpack("L", substr($g64, $speedTableOffset, 4));
+      # $p64data{$p64track} = [];
+      
+      $ret .= "track $track\n";
+      for (my $j=0; $j<8*$trackSize; $j++)
+      {
+         my $char = substr($trackContentBin, $j, 1);
+	 if ($char)
+	 {
+	    my $fluxPos = 16000000*$j/$trackSize/5/8+1;
+            $ret .= "   flux $fluxPos\n";
+	    # push (@{ $p64data{$p64track} }, $fluxPos);
+	 }
+      }
+   }
+   
+   $ret;
 }
