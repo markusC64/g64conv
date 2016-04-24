@@ -1234,15 +1234,41 @@ sub g64top64txt
       }
 
       $ret .= "track $track\n";
-      ### FIXME
+      
+      my $num0 = $speed =~ tr/0//;
+      my $num1 = $speed =~ tr/1//;
+      my $num2 = $speed =~ tr/2//;
+      my $num3 = $speed =~ tr/3//;
+      
+      die if $num0+$num1+$num2+$num3 != 8*$trackSize;
+      my $factor = (5*$num3/307692)+(5*$num2/285714)+(5*$num1/266667)+(5*$num0/250000);
+      print "DEBUG: $factor\n";
+      my $fluxPos = 1;      
+
       for (my $j=0; $j<8*$trackSize; $j++)
       {
          my $char = substr($trackContentBin, $j, 1);
+	 my $sped = substr($speed, $j, 1);
 	 if ($char)
 	 {
-	    my $fluxPos = 16000000*$j/$trackSize/5/8+1;
             $ret .= "   flux $fluxPos\n";
 	    # push (@{ $p64data{$p64track} }, $fluxPos);
+	 }
+	 if ($sped eq '0')
+	 {
+	    $fluxPos += ( 16000000 / 250000 ) * $factor;
+	 }
+	 if ($sped eq '1')
+	 {
+	    $fluxPos += ( 16000000 / 266667 ) * $factor;
+	 }
+	 if ($sped eq '2')
+	 {
+	    $fluxPos += ( 16000000 / 285714 ) * $factor;
+	 }
+	 if ($sped eq '3')
+	 {
+	    $fluxPos += ( 16000000 / 307692 ) * $factor;
 	 }
       }
    }
