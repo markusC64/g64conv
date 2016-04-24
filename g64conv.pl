@@ -137,6 +137,31 @@ sub g64totxt
       
       my $speedTableOffset = 8+4*$notracks + 4*$i;
       my $speed = unpack("L", substr($g64, $speedTableOffset, 4));
+      if ($speed > 4)
+      {
+         my $tmp = substr($g64, $speed, $tracksizeHdr/4);
+	 my $tmp2 = unpack("B*", $tmp);
+	 $speed = "";
+	 while (length($speed) < 8*$trackSize)
+	 {
+	    if ($tmp2 =~ s/^00//)
+	    {
+	       $speed .= "0" x 8;
+	    }
+	    elsif ($tmp2 =~ s/^01//)
+	    {
+	       $speed .= "1" x 8;
+	    }
+	    elsif ($tmp2 =~ s/^10//)
+	    {
+	       $speed .= "2" x 8;
+	    }
+	    elsif ($tmp2 =~ s/^11//)
+	    {
+	       $speed .= "3" x 8;
+	    }
+	 }
+      }
       
       my $trackRet = "track $track\n";
       if ($level == 0)
@@ -152,10 +177,10 @@ sub g64totxt
          my $trackBin = pack("H*", $tmp);
 	 my $trackContentBin = unpack("B*", $trackBin);
 	 
-         $tmp = parseTrack($trackContentBin);
-         $trackRet .= "   speed $speed\n";
+         $tmp = parseTrack($trackContentBin, $speed);
 	 unless (defined $tmp)
 	 {
+            $tmp .= "   speed $speed\n";
 	    $tmp = "   begin-at 0\n   bytes$trackContentHex\n";
 	    $tmp .= "end-track\n\n";
 	 }
@@ -173,15 +198,17 @@ sub g64totxt
 sub parseTrack
 {
    my $track = $_[0];
+   my $speed = $_[1];
    
    my $ret;
    my $beginat;
+   my $curspeed;
    
    unless ($track =~ /^(.*?)(1111111111)(.*)$/ )
    {
       return undef;
    }
-
+   
    $track = "$2$3$1";
    $beginat = length($1);
    
@@ -204,14 +231,42 @@ sub parseTrack
       $beginat += length($track) if $beginat < 0;
    }
    
+   if (length($speed) > 1)
+   {
+      $speed = substr($speed, $beginat) . substr($speed, 0, $beginat);
+      $curspeed = substr($speed, 0, 1);
+      $ret  = "   speed $curspeed\n";
+   }
+   else
+   {
+      $ret  = "   speed $speed\n";
+      $curspeed = $speed;
+      $speed = $speed x length($track);
+   }
+
    $ret .= "   begin-at $beginat\n";
    
+   my $trackPos = 0;
+
    while ($track ne "")
    {
       # Remark: No need to test for > 9 bits cause we arranged that $track is starting with sync
       # which is continued from last "trackPart"!
+      if ($curspeed ne substr($speed, $trackPos, 1))
+      {
+         $curspeed = substr($speed, $trackPos, 1);
+         $ret .= "   speed $curspeed\n";
+      }
       $track =~ s/^(1+)//;
       $ret .= "   sync " . length($1) . "\n";
+      $trackPos += length($1);
+
+      if ($track ne "" && $curspeed ne substr($speed, $trackPos, 1))
+      {
+         $curspeed = substr($speed, $trackPos, 1);
+         $ret .= "   speed $curspeed\n";
+      }
+
       my $trackPart;
       my $trackRest;
       
@@ -233,6 +288,12 @@ sub parseTrack
          $c = $trackPart;
 	 $trackPart = "";
       }
+      $trackPos += length($c);
+      if ($trackPart ne "" && $curspeed ne substr($speed, $trackPos, 1))
+      {
+         $curspeed = substr($speed, $trackPos, 1);
+         $ret .= "   speed2 $curspeed\n";
+      }
       my $a = parseGCR($c);
       my $v2 = $trackPart =~ s/^(.{5})//;
       my $d = $1;
@@ -241,6 +302,7 @@ sub parseTrack
          $d = $trackPart;
 	 $trackPart = "";
       }
+      $trackPos += length($d);
       my $b = parseGCR($d);
 
       if ($a.$b eq '08')
@@ -255,6 +317,11 @@ sub parseTrack
 
          for (my $i=0; $i<7; $i++)
 	 {
+            if ($trackPart ne "" && $curspeed ne substr($speed, $trackPos, 1))
+            {
+               $curspeed = substr($speed, $trackPos, 1);
+               $ret .= "   speed $curspeed\n";
+            }
             my $v3 = $trackPart =~ s/^(.{5})//;
 	    unless ($v3)
 	    {
@@ -262,6 +329,12 @@ sub parseTrack
 		  last;	       
 	    }
 	    my $e = $1;
+            $trackPos += length($e);
+            if ($trackPart ne "" && $curspeed ne substr($speed, $trackPos, 1))
+            {
+               $curspeed = substr($speed, $trackPos, 1);
+               $ret .= "   speed2 $curspeed\n";
+            }
             my $a = parseGCR($1);
             my $v4 = $trackPart =~ s/^(.{5})//;
 	    unless ($v4)
@@ -271,6 +344,7 @@ sub parseTrack
 		  last;	       
 	    }
 	    my $f = $1;
+            $trackPos += length($f);
             my $b = parseGCR($1);
 	    
 	    if ($i == 0)
@@ -326,6 +400,13 @@ sub parseTrack
 	 my $gcr = "";
          for (my $i=0; $i<259; $i++)
 	 {
+            if ($trackPart ne "" && $curspeed ne substr($speed, $trackPos, 1))
+            {
+	       $ret .= "      gcr$gcr\n" if $gcr;
+	       $gcr = "";
+               $curspeed = substr($speed, $trackPos, 1);
+               $ret .= "   speed $curspeed\n";
+            }
             my $v3 = $trackPart =~ s/^(.{5})//;
 	    unless ($v3)
 	    {
@@ -335,6 +416,15 @@ sub parseTrack
 	    }
 	    my $e = $1;
             my $a = parseGCR($1);
+	    $trackPos += 5;
+
+            if ($trackPart ne "" && $curspeed ne substr($speed, $trackPos, 1))
+            {
+	       $ret .= "      gcr$gcr\n" if $gcr;
+	       $gcr = "";
+               $curspeed = substr($speed, $trackPos, 1);
+               $ret .= "   speed2 $curspeed\n";
+            }
             my $v4 = $trackPart =~ s/^(.{5})//;
 	    unless ($v4)
 	    {
@@ -345,6 +435,7 @@ sub parseTrack
 	    }
 	    my $f = $1;
             my $b = parseGCR($1);
+	    $trackPos += 5;
 	    
 	    if ($i < 256)
 	    {
@@ -384,23 +475,46 @@ sub parseTrack
 	 $ret .= "   bits $c$d\n" unless ((defined $a) && (defined $b));
       }
       
-      while (length ($trackPart) >= 8)
+      my @trackParts = ();
+      my $speedsPart = substr($speed, $trackPos, length($trackPart));
+      my $tmp = $trackPart; 
+      while ($tmp ne "")
       {
-         $trackPart =~ s/^((.{8})+)//;
-         my $trackBin = pack("B*", $1);
-	 my $trackContentHex = unpack("H*", $trackBin);
-         $trackContentHex =~ s/(..)/ $1/gc;
-	 $ret .= "   bytes$trackContentHex\n";
-
+         my $speed1 = substr($speedsPart, 0, 1);
+	 $speedsPart =~ s/^($speed1+)//;
+	 my $len = length($1);
+	 push (@trackParts, substr($tmp, 0, $len));
+	 $tmp = substr($tmp, $len);
       }
       
-      $ret .= "   bits $trackPart\n" if $trackPart ne '';
+      for my $trackPart2 (@trackParts)
+      {
+         if ($trackPart2 ne "" && $curspeed ne substr($speed, $trackPos, 1))
+         {
+            $curspeed = substr($speed, $trackPos, 1);
+            $ret .= "   speed $curspeed\n";
+         }
+      
+         while (length ($trackPart2) >= 8)
+         {
+            $trackPart2 =~ s/^((.{8})+)//;
+	    $trackPos += length($1);
+            my $trackBin = pack("B*", $1);
+	    my $trackContentHex = unpack("H*", $trackBin);
+            $trackContentHex =~ s/(..)/ $1/gc;
+	    $ret .= "   bytes$trackContentHex\n";
+
+         }
+      
+         $ret .= "   bits $trackPart2\n" if $trackPart2 ne '';
+         $trackPos += length($trackPart2);
+      }
       
       $track = $trackRest;
       
       $ret .= "\n";
    }
-   
+
    $ret .= "end-track\n\n";
    
    $ret;
@@ -502,21 +616,63 @@ sub txttog64
       elsif ($line eq "end-track")
       {
          my $len = length($curTrack);
+	 if (length($speed) > 1)
+	 {
+            my $curSpeed = substr($speed, -1, 1);
+	    my $len = $len - length($speed);
+	    $speed .= $curSpeed x $len;
+         }
 	 my $trk = ($curTrackNo+1)/2;
 	 die "Track $trk length $len bits is not a multilpe of 8 bits\n" if $len % 8;
 	 
 	 my $tmp = (length($curTrack)-$beginat) % length($curTrack); 
 	 my $curTrack2 = substr($curTrack, $tmp) . substr($curTrack, 0, $tmp);
+	 my $speed2 = substr($speed, $tmp) . substr($speed, 0, $tmp);
 	 
          if ($curTrackNo)
 	 {
 	    $tracks[$curTrackNo] = [ $speed, $curTrack2 ];
 	 }
          $checksumBlock = 0;
+	 $speed = 4;
       }
       elsif ($line =~ /^speed (.*)$/)
       {
-         $speed = $1;
+         if ($speed eq "4")
+	 {
+            $speed = $1;
+	 }
+	 else
+	 {
+	    my $newSpeed = $1;
+	    my $curSpeed = substr($speed, -1, 1);
+	    my $len1 = length($curTrack);
+	    my $len2 = $len1 + $beginat;
+	    $len2 = $len2 - $len1 % 8;
+	    $len2 -= $beginat;
+	    my $len = $len2 - length($speed);
+	    $speed .= $curSpeed x $len;
+	    $speed .= $newSpeed;
+	 }
+      }
+      elsif ($line =~ /^speed2 (.*)$/)
+      {
+         if ($speed eq "4")
+	 {
+            $speed = $1;
+	 }
+	 else
+	 {
+	    my $newSpeed = $1;
+	    my $curSpeed = substr($speed, -1, 1);
+	    my $len1 = length($curTrack);
+	    my $len2 = $len1 - 5 + $beginat;
+	    $len2 = $len2 - $len1 % 8;
+	    $len2 -= $beginat;
+	    my $len = $len2 - length($speed);
+	    $speed .= $curSpeed x $len;
+	    $speed .= $newSpeed;
+	 }
       }
       elsif ($line =~ /^begin-at (.*)$/)
       {
@@ -637,21 +793,56 @@ sub txttog64
    for (my $i=1; $i<$noTracks; $i++)
    {
       next unless defined $tracks[$i];
-      my $trackSpeed = $tracks[$i]->[0]-0;
+      my $trackSpeed = $tracks[$i]->[0];
       my $trackContent = $tracks[$i]->[1];
-      
+
       my $track2 = ($i+1)/2;
       my $trackTablePosition = 8+4*$i;
       my $speedTableOffset = 8+4*$noTracks + 4*$i;
-      
+
       my $tmp = pack("L", length($g64));
       substr($g64, $trackTablePosition, 4) = $tmp;
-      substr($g64, $speedTableOffset, 4) = pack("L", $trackSpeed);
+      substr($g64, $speedTableOffset, 4) = pack("L", $trackSpeed) if length($trackSpeed) == 1;
       
       my $tmp = pack("B*", $trackContent);
       my $siz = length($tmp);
       my $tmpSize = pack("S", $siz);
-      $g64 .= $tmpSize.$tmp.("\0" x ($tracksizeHdr-$siz));
+      $g64 .= $tmpSize.$tmp.("\0" x ($tracksizeHdr/4-$siz));
+
+      if (length($trackSpeed) > 1)
+      {
+         my $tmp = $trackSpeed;
+	 my $trackSpeed2 = "";
+	 while ($tmp ne "")
+	 {
+	    if ($tmp =~ s/^0{8}//)
+	    {
+	       $trackSpeed2 .= "00";
+	    }
+	    elsif ($tmp =~ s/^1{8}//)
+	    {
+	       $trackSpeed2 .= "01";
+	    }
+	    elsif ($tmp =~ s/^2{8}//)
+	    {
+	       $trackSpeed2 .= "10";
+	    }
+	    elsif ($tmp =~ s/^3{8}//)
+	    {
+	       $trackSpeed2 .= "11";
+	    }
+	    else
+	    {
+	       die "FIXME: speed not aligned\n".$tmp;
+	    }
+	 }
+	 $tmp = pack("L", length($g64));
+         substr($g64, $speedTableOffset, 4) = $tmp;
+      
+         my $tmp = pack("B*", $trackSpeed2);
+         my $siz = length($tmp);
+         $g64 .= $tmp.("\0" x ($tracksizeHdr-$siz));
+      }
    }
    
    $g64;
