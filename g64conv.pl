@@ -1203,7 +1203,38 @@ sub g64top64txt
       my $speed = unpack("L", substr($g64, $speedTableOffset, 4));
       # $p64data{$p64track} = [];
       
+      if ($speed > 4)
+      {
+         my $tmp = substr($g64, $speed, $tracksizeHdr/4);
+	 my $tmp2 = unpack("B*", $tmp);
+	 $speed = "";
+	 while (length($speed) < 8*$trackSize)
+	 {
+	    if ($tmp2 =~ s/^00//)
+	    {
+	       $speed .= "0" x 8;
+	    }
+	    elsif ($tmp2 =~ s/^01//)
+	    {
+	       $speed .= "1" x 8;
+	    }
+	    elsif ($tmp2 =~ s/^10//)
+	    {
+	       $speed .= "2" x 8;
+	    }
+	    elsif ($tmp2 =~ s/^11//)
+	    {
+	       $speed .= "3" x 8;
+	    }
+	 }
+      }
+      else
+      {
+         $speed = $speed x (8*$trackSize);
+      }
+
       $ret .= "track $track\n";
+      ### FIXME
       for (my $j=0; $j<8*$trackSize; $j++)
       {
          my $char = substr($trackContentBin, $j, 1);
