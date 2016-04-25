@@ -1256,19 +1256,19 @@ sub g64top64txt
 	 }
 	 if ($sped eq '0')
 	 {
-	    $fluxPos += ( 16000000 / 250000 ) * $factor;
+	    $fluxPos += ( 16000000 / 250000 ) / $factor;
 	 }
 	 if ($sped eq '1')
 	 {
-	    $fluxPos += ( 16000000 / 266667 ) * $factor;
+	    $fluxPos += ( 16000000 / 266667 ) / $factor;
 	 }
 	 if ($sped eq '2')
 	 {
-	    $fluxPos += ( 16000000 / 285714 ) * $factor;
+	    $fluxPos += ( 16000000 / 285714 ) / $factor;
 	 }
 	 if ($sped eq '3')
 	 {
-	    $fluxPos += ( 16000000 / 307692 ) * $factor;
+	    $fluxPos += ( 16000000 / 307692 ) / $factor;
 	 }
       }
    }
