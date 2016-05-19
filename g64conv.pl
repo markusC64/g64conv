@@ -44,6 +44,13 @@ elsif ($from =~ /\.d64$/i && $to =~ /\.g64$/)
    my $g64 = txttog64($txt, $d64);
    writefileRaw($g64, $to);
 }
+elsif ($from =~ /\.d71$/i && $to =~ /\.g64$/)
+{
+   my $txt = stddisk1571();
+   my $d64 = readfileRaw($from);
+   my $g64 = txttog64($txt, $d64);
+   writefileRaw($g64, $to);
+}
 elsif ($from =~ /\.txt$/i && $to =~ /\.g64$/)
 {
    my $txt = readfile($from);
@@ -57,6 +64,12 @@ elsif ($from =~ /\.g64$/i && $to =~ /\.d64$/)
    my $g64 = readfileRaw($from);
    my $d64 = g64tod64($g64);
    writefileRaw($d64, $to);
+}
+elsif ($from =~ /\.g64$/i && $to =~ /\.d71$/)
+{
+   my $g64 = readfileRaw($from);
+   my $d71 = g64tod71($g64);
+   writefileRaw($d71, $to);
 }
 else
 {
@@ -906,6 +919,71 @@ sub stddisk
    $ret;
 }
 
+sub stddisk1571
+{
+   my $ret = "no-tracks 168\ntrack-size 7928\n";
+   my $i;
+   my $o = 0;
+   for ($i=1; $i<71; $i++)
+   {
+      my $t = $i;
+      my $t2 = $i;
+      if ($t > 35)
+      {
+         $t -= 35;
+	 $t2 += 7;
+      }
+   
+      my $s = 21;
+      $s = 19 if $t >= 18;
+      $s = 18 if $t >= 25;
+      $s = 17 if $t >= 31;
+      
+      $ret .= "track $t2\n";
+      $ret .= "   speed 3\n" if $s == 21;
+      $ret .= "   speed 2\n" if $s == 19;
+      $ret .= "   speed 1\n" if $s == 18;
+      $ret .= "   speed 0\n" if $s == 17;
+      $ret .= "   begin-at 0\n";
+      
+      my $j;
+      for ($j = 0; $j < $s; $j++)
+      {
+         my $extraspace = "";
+	 if ($j == $s-1)
+	 {
+	    $extraspace = "   bytes" . (" 55" x 90) . "\n" if $i < 18;
+	    $extraspace = "   bytes" . (" 55" x 264) . "\n" if $i >= 18 && $i < 25;
+	    $extraspace = "   bytes" . (" 55" x 150) . "\n" if $i >= 25 && $i < 31;
+	    $extraspace = "   bytes" . (" 55" x 96) . "\n" if $i > 30;
+         }
+         $ret .="   sync 32\n   gcr 08\n"
+	       ."   begin-checksum\n      checksum\n"
+	       ."      gcr ".sprintf("%02x", $j)."\n"      
+	       ."      gcr ".sprintf("%02x", $i)."\n"
+	       ."      extgcr 165a3 1\n"
+	       ."      extgcr 165a2 1\n"
+	       ."   end-checksum\n"
+	       ."   gcr 0f\n"
+	       ."   gcr 0f\n"
+	       ."   bytes 55 55 55 55 55 55 55 55 55 ff\n"
+	       ."\n"
+	       ."   sync 32\n   gcr 07\n"
+	       ."   begin-checksum\n"
+	       ."      extgcr ".sprintf("%2x", $o)." 100\n"
+	       ."      checksum\n"
+	       ."   end-checksum\n"
+	       ."   gcr 00\n"
+	       ."   gcr 00\n"
+	       .$extraspace
+	       ."   bytes 55 55 55 55 55 55 55 55 ff\n";
+	       
+         $o += 256;
+      }
+      $ret .="end-track\n\n";
+   }
+   $ret;
+}
 
 
 
@@ -1170,6 +1248,94 @@ sub g64tod64
    $ret.$error;
 }
 
+sub g64tod71
+{
+   my ($g64, $level) = @_;
+   my $ret = ("\xDE\xAD\xBE\xEF" x 64) x 1366;
+   my $error = "\x02" x 1366;
+   
+   my $signature = substr($g64, 0, 8);
+   return undef unless $signature eq 'GCR-1541';
+
+   return undef unless substr($g64, 8, 1) eq "\0";
+   
+   my $notracks = unpack("C", substr($g64, 9, 1));
+   my $tracksizeHdr = unpack("S", substr($g64, 0xA, 2));
+   
+   my @tracks = (  ); 
+   my @sectors = ( 21, 21, 21, 21, 21,  21, 21, 21, 21, 21,
+                   21, 21, 21, 21, 21,  21, 21, 19, 19, 19,
+		   19, 19, 19, 19, 18,  18, 18, 18, 18, 18,
+		   17, 17, 17, 17, 17,  
+		   
+		   21, 21, 21, 21, 21,  21, 21, 21, 21, 21,
+                   21, 21, 21, 21, 21,  21, 21, 19, 19, 19,
+		   19, 19, 19, 19, 18,  18, 18, 18, 18, 18,
+		   17, 17, 17, 17, 17, 
+		 );
+
+   for (my $i=0; $i<70; $i++)
+   {
+      my $s = 0;
+      for (my $j=0; $j<$i; $j++)
+      {
+         $s += $sectors[$j];
+      }
+      $tracks[$i] = $s;
+   }
+
+   for (my $i=1; $i<=$notracks; $i+=2)
+   {
+      my $track = ($i+1)/2;
+      my $trackTablePosition = 8+4*$i;
+      my $trackPosition = unpack("L", substr($g64, $trackTablePosition, 4));
+      next unless $trackPosition;
+      my $trackSize = unpack("S", substr($g64, $trackPosition, 2));
+      my $trackContent = substr($g64, $trackPosition+2, $trackSize);
+      
+      my $trackContentHex = unpack("H*", $trackContent);
+      $trackContentHex =~ s/(..)/ $1/gc;
+      
+      my $speedTableOffset = 8+4*$notracks + 4*$i;
+      my $speed = unpack("L", substr($g64, $speedTableOffset, 4));
+      
+      my $trackRet = "track $track\n";
+
+      my $tmp = $trackContentHex;
+      $tmp =~ s/ //g;
+      my $trackBin = pack("H*", $tmp);
+      my $trackContentBin = unpack("B*", $trackBin);
+      $tmp = parseTrack2($trackContentBin);
+      
+      for my $t (sort { $a <=> $b } keys %$tmp)
+      {
+         next if $t < 1;
+	 next if $t > 70;
+	 my $tmp2 = $tmp->{$t};
+	 for my $s (sort { $a <=> $b } keys %$tmp2)
+	 {
+	    next if $s > $sectors[$t-1];
+	    my $offset1 = $tracks[$t-1] + $s;
+	    my $offset2 = $offset1 * 256;
+	    my $content = $tmp2->{$s};
+	    if (length($content) == 256)
+	    {
+	       substr($ret, $offset2, 256) = $content;
+	       substr($error, $offset1, 1) = "\0";
+	    }
+	    else
+	    {
+	       substr($error, $offset1, 1) = chr($content);
+	    }
+	 } 
+      }      
+   }
+   
+   return $ret if $error eq "\0" x 1366;
+   
+   $ret.$error;
+}
+
 sub g64top64txt
 {
    my ($g64, ) = @_;
@@ -1188,6 +1354,10 @@ sub g64top64txt
    for (my $i=1; $i<$notracks; $i++)
    {
       my $track = ($i+1)/2;
+      if ($track >= 43)
+      {
+         $track = ($track - 42) | 128;
+      }
       my $p64track = $i+1;
       my $trackTablePosition = 8+4*$i;
       my $trackPosition = unpack("L", substr($g64, $trackTablePosition, 4));
