@@ -20,7 +20,7 @@ if (@ARGV < 2)
        "        g64conv.pl <from.d64> <to.g64>\n".
        "        g64conv.pl <fromTemplate.txt> <to.g64> <from.d64>\n".
        "mode may be 0 (hex only) or 1 (gcr parsed, default).\n".
-       "        or p64 for p64 compatible flux possition list\n";
+       "        or p64 for p64 compatible flux position list\n";
 }
 
 
