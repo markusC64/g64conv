@@ -28,6 +28,15 @@ my $from = $ARGV[0];
 my $to = $ARGV[1];
 my $level = $ARGV[2];
 
+my %warp25tableEnc = ( 0 => 73, 1 => 74, 2 => 75, 3 => 77, 4 => 78, 5 => 82, 6 => 83, 7 => 85, 8 => 86, 9 => 89, 10 => 90, 11 => 91, 12 => 93, 13 => 94, 14 => 101, 15 => 102, 32 => 105, 33 => 106, 34 => 107, 35 => 109, 36 => 110, 37 => 114, 38 => 115, 39 => 117, 40 => 118, 41 => 121, 42 => 122, 43 => 123, 44 => 146, 45 => 147, 46 => 149, 47 => 150, 64 => 153, 65 => 154, 66 => 155, 67 => 157, 68 => 158, 69 => 165, 70 => 166, 71 => 169, 72 => 170, 73 => 171, 74 => 173, 75 => 174, 76 => 178, 77 => 179, 78 => 181, 79 => 182, 96 => 185, 97 => 186, 98 => 187, 99 => 189, 100 => 201, 101 => 202, 102 => 203, 103 => 205, 104 => 206, 105 => 210, 106 => 211, 107 => 213, 108 => 214, 109 => 217, 110 => 218, 111 => 219,  );
+my %warp25tableDec = ();
+for my $i (keys %warp25tableEnc)
+{
+   $warp25tableDec{$warp25tableEnc{$i}} = $i;
+}
+
+
+
 if ($from =~ /\.g64$/i && $to =~ /\.txt$/)
 {
    $level = 1 unless defined $level;
@@ -75,8 +84,6 @@ else
 {
    die "Unknown conversion\n";
 }
-
-
 
 sub readfile
 {
@@ -401,6 +408,97 @@ sub parseTrack
             $ret .= "   ; Trk ".hex($trk)." Sec ".hex($sec)."\n";
 	 }
       }
+      elsif ($a.$b eq "07" && substr($trackPart, 0, 14) eq "01010010101101")
+      {
+         $ret .= "   ; warp 25 data\n";
+         $ret .= "   gcr 07\n";
+
+           if ($trackPart ne "" && $curspeed ne substr($speed, $trackPos, 1))
+            {
+               $curspeed = substr($speed, $trackPos, 1);
+               $ret .= "   speed2 $curspeed\n";
+            }
+          
+         $ret .= "   bits ".substr($trackPart, 0, 6)."\n";
+	 $trackPart =~ s/^......//;
+	 $speed =~ s/^......//;
+
+           if ($trackPart ne "" && $curspeed ne substr($speed, $trackPos, 1))
+            {
+               $curspeed = substr($speed, $trackPos, 1);
+               $ret .= "   speed2 $curspeed\n";
+            }
+
+	 $ret .= "   bytes ad\n";
+	 $trackPart =~ s/^........//;
+	 $speed =~ s/^........//;
+
+	 $ret .= "   begin-checksum\n";
+         # Decode 320 Bytes (Warp 25)
+	 
+	 my $w25 = "";
+	 my $warp = 0;
+	 
+         for (my $i=0; $i<321; $i++)
+	 {
+            if ($trackPart ne "" && $curspeed ne substr($speed, $trackPos, 1))
+            {
+	       $ret .= "      warp25-raw$w25\n" if $w25;
+	       $w25 = "";
+               $warp = 0;
+               $curspeed = substr($speed, $trackPos, 1);
+               $ret .= "   speed $curspeed\n";
+            }
+	    
+	    #$speed =~ s/^(.{8})//;
+            my $avail = $trackPart =~ s/^(.{8})//;
+	    
+            my $byteChr = pack("B*", $1);
+	    my $byte = ord($byteChr);
+	    my $byteHex = unpack("H*", $byteChr);
+	    my $newwarp = $warp25tableDec{$byte};
+	    my $warpByte = undef;
+	    if (defined $warp)
+	    {
+	       $warp ^= $newwarp;
+	       $warpByte = unpack("H*", chr($warp));
+	    }
+	   
+
+	    if ($i < 320)
+	    {
+	       if ((defined $warpByte))
+	       {
+	          $w25 .= " $warpByte";
+	       }
+	       else
+	       {
+	          $ret .= "      warp25-raw$w25\n" if $w25;
+	          $ret .= "      byte $byteHex\n";
+		  $w25 = "";
+                  $warp = 0;
+	       }
+	    }
+	    else
+	    {
+	          $warpByte = undef;
+	          if (defined $newwarp)
+	          {
+	             $warpByte = unpack("H*", chr($newwarp));
+	          }
+	          $ret .= "      warp25-raw$w25\n" if $w25;
+	          $ret .= "      warp25-checksum $warpByte\n" if defined $warpByte;
+	          $ret .= "      byte $byteHex\n" unless defined $warpByte;
+                  $ret .= "   end-checksum\n";
+		  $ret .= "   ; invalid checksum\n" if $warp;
+		  $w25 = "";
+	    }
+	 }
+	 
+
+      }
+
+
       elsif ($a.$b eq '07')
       {
          $ret .= "   ; data\n";
@@ -725,7 +823,9 @@ sub txttog64
 	    my $tmp = unpack("H*", chr($checksum));
 	    my $tmp2 = nibbleToGCR( substr($tmp, 0, 1) ) . nibbleToGCR( substr($tmp, 1, 1) );
 
-	    $curTrack =~ s/-{10}/$tmp2/g;
+	    my $tmp3 = unpack("B*", chr($warp25tableEnc{$checksum}));
+
+	    $curTrack =~ s/_{8}/$tmp3/g;
 	 }
 	 $checksumBlock = 0;
       }
@@ -749,6 +849,23 @@ sub txttog64
 	    }
 	 }
       }
+      elsif ($line =~ /^warp25-raw (.*)$/)
+      {
+         my $par = $1;
+	 $par =~ s/ //g;
+	 my $last = 0;
+	 
+         my $tmp = pack("H*", $par);
+	 my @tmp = unpack("C*", $tmp);
+	 for my $i (@tmp)
+	 {
+	    my $val = $warp25tableEnc{$i ^ $last};
+	    my $w25 = chr($val);
+	    $last = $i;
+	    $curTrack .= unpack("B*", $w25);
+	    $checksum ^= $i if $checksumBlock == 1;
+	 }
+      }
       elsif ($line =~ /^extgcr (.*) (.*)$/ && defined $d64)
       {
          my $pos = hex($1);
@@ -769,6 +886,31 @@ sub txttog64
 	    {
 	       $checksum ^= $i;
 	    }
+	 }
+      }
+      elsif ($line =~ /^warp25-checksum(.*)$/)
+      {
+         my $par = $1;
+	 $par =~ s/ //g;
+	 
+	 if (length($par) == 8)
+	 {
+            $curTrack .= $par;
+	 }
+	 elsif ($par ne '')
+	 {
+            my $tmp = pack("H*", $par);
+	    my @tmp = unpack("C*", $tmp);
+	    for my $i (@tmp)
+	    {
+	       my $w25 = chr($warp25tableEnc{$i});
+	       $curTrack .= unpack("B*", $w25);
+	       $checksum ^= $i if $checksumBlock == 1;
+	    }
+	 }
+	 else
+	 {
+	    $curTrack .= "_" x 8;
 	 }
       }
       elsif ($line =~ /^checksum(.*)$/)
