@@ -474,7 +474,7 @@ sub parseTrack
 	       else
 	       {
 	          $ret .= "      warp25-raw$w25\n" if $w25;
-	          $ret .= "      byte $byteHex\n";
+	          $ret .= "      bytes $byteHex\n";
 		  $w25 = "";
                   $warp = 0;
 	       }
@@ -511,7 +511,7 @@ sub parseTrack
 	          }
 	          $ret .= "      warp25-raw$w25\n" if $w25;
 	          $ret .= "      warp25-checksum $warpByte\n" if defined $warpByte;
-	          $ret .= "      byte $byteHex\n" unless defined $warpByte;
+	          $ret .= "      bytes $byteHex\n" unless defined $warpByte;
                   $ret .= "   end-checksum\n";
 		  $ret .= "   ; invalid checksum\n" if $warp;
 		  $w25 = "";
