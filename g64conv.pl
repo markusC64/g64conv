@@ -481,6 +481,29 @@ sub parseTrack
 	    }
 	    else
 	    {
+                  if (length($w25) == 960)
+		  {
+		     my $tmp = $w25;
+		     $w25 = "";
+		     $tmp =~ s/ //g;
+		     my $sektor = pack("H*", $tmp);
+		     $tmp = "";
+		     for (my $i=0; $i<320; $i++)
+		     {
+		        my $val = ord(substr($sektor, $i, 1));
+			
+			$tmp .= ($val & 8) ? '1':'0';  
+			$tmp .= ($val & 2) ? '1':'0';  
+			$tmp .= ($val & 64) ? '1':'0';  
+			$tmp .= ($val & 4) ? '1':'0';  
+			$tmp .= ($val & 32) ? '1':'0';  
+			$tmp .= ($val & 1) ? '1':'0';
+		     }
+		     $tmp = unpack("H*", pack("b*", $tmp));
+		     $tmp =~ s/(..)/ $1/gc;
+
+		     $ret .= "      warp25$tmp\n";
+		  }
 	          $warpByte = undef;
 	          if (defined $newwarp)
 	          {
@@ -857,6 +880,39 @@ sub txttog64
 	 
          my $tmp = pack("H*", $par);
 	 my @tmp = unpack("C*", $tmp);
+	 for my $i (@tmp)
+	 {
+	    my $val = $warp25tableEnc{$i ^ $last};
+	    my $w25 = chr($val);
+	    $last = $i;
+	    $curTrack .= unpack("B*", $w25);
+	    $checksum ^= $i if $checksumBlock == 1;
+	 }
+      }
+      elsif ($line =~ /^warp25 (.*)$/)
+      {
+         my $par = $1;
+	 $par =~ s/ //g;
+	 my $last = 0;
+	 
+         my $tmp = pack("H*", $par);
+	 $tmp = unpack("b*", $tmp);
+	 my @tmp = (0,) x 320;
+	 for (my $i=0; $i<320; $i++)
+	 {
+	    $tmp =~ s/^(.{6})//;
+            my $sixbits = $1;
+	    my $byte = 0;
+	    $byte |= 1 if substr($sixbits,5,1);
+	    $byte |= 2 if substr($sixbits,1,1);
+	    $byte |= 4 if substr($sixbits,3,1);
+	    $byte |= 8 if substr($sixbits,0,1);
+	    $byte |= 32 if substr($sixbits,4,1);
+	    $byte |= 64 if substr($sixbits,2,1);
+	    
+	    $tmp[$i] = $byte;
+	 }
+	 
 	 for my $i (@tmp)
 	 {
 	    my $val = $warp25tableEnc{$i ^ $last};
