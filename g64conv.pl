@@ -53,6 +53,12 @@ elsif ($from =~ /\.d64$/i && $to =~ /\.g64$/)
    my $g64 = txttog64($txt, $d64);
    writefileRaw($g64, $to);
 }
+elsif ($from =~ /\.reu$/i && $to =~ /\.g64$/)
+{
+   my $reu = readfile($from);
+   my $g64 = reutog64($reu);
+   writefileRaw($g64, $to);
+}
 elsif ($from =~ /\.d71$/i && $to =~ /\.g64$/)
 {
    my $txt = stddisk1571();
@@ -1642,4 +1648,73 @@ sub g64top64txt
    }
    
    $ret;
+}
+
+
+sub reutog64
+{
+   my ($reu, $d64) = @_;
+
+   my $tracksizeHdr = 7928;
+   my $noTracks = 84;
+
+   my @tracks = ();
+
+   my $startTrack = unpack("C", substr($reu, 0, 1));
+   my $endTrack = unpack("C", substr($reu, 1, 1));
+   my $incTrack =    my $incTrack = unpack("C", substr($reu, 2, 1));
+
+   my $reduceSyncs = unpack("C", substr($reu, 3, 1));
+   
+   my $trackPos = 8192;
+   for (my $i=$startTrack; $i<=$endTrack; $i += $incTrack)
+   {
+      my $track = $i-1;
+      my $speed = unpack("C", substr($reu, 3+$i, 1));
+      my $rawTrack = substr($reu, $trackPos, 8192);
+      my $rawTrackLen = index $rawTrack, "\0";
+      if ($speed & 128)
+      {
+         $rawTrack = "\xFF" x 7820 if ($speed & 3) == 3;      
+         $rawTrack = "\xFF" x 7170 if ($speed & 3) == 2;      
+         $rawTrack = "\xFF" x 6300 if ($speed & 3) == 1;      
+         $rawTrack = "\xFF" x 6020 if ($speed & 3) == 0;      
+      }
+      else
+      {
+         next if $rawTrackLen == -1;
+      }
+      $rawTrack = substr($rawTrack, 0, $rawTrackLen);
+      $rawTrack = "\xFF\xFF\xFF".$rawTrack if !$reduceSyncs && ( $speed & 64 ) == 0;
+      
+      $tracks[$track] = [$speed & 3, $rawTrack];
+      
+      $trackPos += 8192;
+   }
+
+   my $g64 = "GCR-1541\0" . pack("C", $noTracks) . pack("S", $tracksizeHdr);
+   $g64 .= "\0\0\0\0" x $noTracks;
+   $g64 .= "\0\0\0\0" x $noTracks;
+   
+   for (my $i=1; $i<$noTracks; $i++)
+   {
+      next unless defined $tracks[$i];
+      my $trackSpeed = $tracks[$i]->[0];
+      my $trackContent = $tracks[$i]->[1];
+
+      my $track2 = ($i+1)/2;
+      my $trackTablePosition = 8+4*$i;
+      my $speedTableOffset = 8+4*$noTracks + 4*$i;
+
+      my $tmp = pack("L", length($g64));
+      substr($g64, $trackTablePosition, 4) = $tmp;
+      substr($g64, $speedTableOffset, 4) = pack("L", $trackSpeed);
+      
+      my $tmp = $trackContent;
+      my $siz = length($tmp);
+      my $tmpSize = pack("S", $siz);
+      $g64 .= $tmpSize.$tmp.("\0" x ($tracksizeHdr/4-$siz));
+   }
+   
+   $g64;
 }
