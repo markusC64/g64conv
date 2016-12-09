@@ -55,8 +55,14 @@ elsif ($from =~ /\.d64$/i && $to =~ /\.g64$/)
 }
 elsif ($from =~ /\.reu$/i && $to =~ /\.g64$/)
 {
-   my $reu = readfile($from);
+   my $reu = readfileRaw($from);
    my $g64 = reutog64($reu);
+   writefileRaw($g64, $to);
+}
+elsif ($from =~ /\.g64$/i && $to =~ /\.reu$/)
+{
+   my $reu = readfileRaw($from);
+   my $g64 = g64toreu($reu);
    writefileRaw($g64, $to);
 }
 elsif ($from =~ /\.d71$/i && $to =~ /\.g64$/)
@@ -1663,7 +1669,6 @@ sub reutog64
    my $startTrack = unpack("C", substr($reu, 0, 1));
    my $endTrack = unpack("C", substr($reu, 1, 1));
    my $incTrack =    my $incTrack = unpack("C", substr($reu, 2, 1));
-
    my $reduceSyncs = unpack("C", substr($reu, 3, 1));
    
    my $trackPos = 8192;
@@ -1673,6 +1678,7 @@ sub reutog64
       my $speed = unpack("C", substr($reu, 3+$i, 1));
       my $rawTrack = substr($reu, $trackPos, 8192);
       my $rawTrackLen = index $rawTrack, "\0";
+
       if ($speed & 128)
       {
          $rawTrack = "\xFF" x 7820 if ($speed & 3) == 3;      
@@ -1682,7 +1688,11 @@ sub reutog64
       }
       else
       {
-         next if $rawTrackLen == -1;
+         if ($rawTrackLen == -1)
+	 {
+	    $trackPos += 8192;
+	    next;
+	 }
       }
       $rawTrack = substr($rawTrack, 0, $rawTrackLen);
       $rawTrack = "\xFF\xFF\xFF".$rawTrack if !$reduceSyncs && ( $speed & 64 ) == 0;
@@ -1717,4 +1727,67 @@ sub reutog64
    }
    
    $g64;
+}
+
+
+
+
+
+
+sub g64toreu
+{
+   my ($g64, $level) = @_;
+   my $reu = "\0" x 8192;
+   
+   my $signature = substr($g64, 0, 8);
+   return undef unless $signature eq 'GCR-1541';
+
+   return undef unless substr($g64, 8, 1) eq "\0";
+   
+   my $notracks = unpack("C", substr($g64, 9, 1));
+   my $tracksizeHdr = unpack("S", substr($g64, 0xA, 2));
+   
+   my $min = 9999;
+   my $max = 0;
+   
+   for (my $i=1; $i<81; $i+=2)
+   {
+      my $track = ($i+1)/2;
+
+      my $trackTablePosition = 8+4*$i;
+      my $trackPosition = unpack("L", substr($g64, $trackTablePosition, 4));
+      
+      my $speedTableOffset = 8+4*$notracks + 4*$i;
+      my $speed = unpack("L", substr($g64, $speedTableOffset, 4));
+
+      $min = $i if $i < $min;
+      $max = $i if $i > $max;
+      
+      if ($trackPosition)
+      {
+         my $trackSize = unpack("S", substr($g64, $trackPosition, 2));
+         my $trackContent = substr($g64, $trackPosition+2, $trackSize);
+      
+         if ($speed > 4)
+         {
+            die;
+         }
+      
+         my $tmp = $trackContent . ( "\0" x (8192-length($trackContent)) );
+	 my $flags = 4;
+	 $flags = 0x48 if index($trackContent, "\xFF") < 0;
+	 die "Killertracks unsupported\n" if $trackContent =~ /^\xff+$/;
+         substr($reu, 4+$i, 1) = chr($speed | $flags);
+         $reu .= $tmp;
+      }
+      else
+      {
+         $reu .= (chr(55) x 6020) . ("\0" x (8192-6020));
+         substr($reu, 4+$i, 1) = chr(0x42);
+      }
+   }
+   
+   substr($reu, 0, 4) = chr(2).chr(80).chr(2).chr(255); 
+   
+   $reu;
 }
