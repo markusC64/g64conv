@@ -18,9 +18,12 @@ if (@ARGV < 2)
    die "Syntax: g64conv.pl <from.g64> <to.txt> [mode]\n".
        "        g64conv.pl <from.txt> <to.g64>\n".
        "        g64conv.pl <from.d64> <to.g64>\n".
+       "        g64conv.pl <from.reu> <to.g64>\n".
+       "        g64conv.pl <from.g64> <to.reu> [reduceSync]\n".
        "        g64conv.pl <fromTemplate.txt> <to.g64> <from.d64>\n".
        "mode may be 0 (hex only) or 1 (gcr parsed, default).\n".
-       "        or p64 for p64 compatible flux position list\n";
+       "        or p64 for p64 compatible flux position list\n".
+       "reduceSync may be 0 (disabled) or 1 (enabled, default).\n";
 }
 
 
@@ -61,8 +64,9 @@ elsif ($from =~ /\.reu$/i && $to =~ /\.g64$/)
 }
 elsif ($from =~ /\.g64$/i && $to =~ /\.reu$/)
 {
+   $level = 1 unless defined $level;
    my $reu = readfileRaw($from);
-   my $g64 = g64toreu($reu);
+   my $g64 = g64toreu($reu, $level);
    writefileRaw($g64, $to);
 }
 elsif ($from =~ /\.d71$/i && $to =~ /\.g64$/)
@@ -1622,7 +1626,6 @@ sub g64top64txt
       
       die if $num0+$num1+$num2+$num3 != 8*$trackSize;
       my $factor = (5*$num3/307692)+(5*$num2/285714)+(5*$num1/266667)+(5*$num0/250000);
-      print "DEBUG: $factor\n";
       my $fluxPos = 1;      
 
       for (my $j=0; $j<8*$trackSize; $j++)
@@ -1737,6 +1740,7 @@ sub reutog64
 sub g64toreu
 {
    my ($g64, $level) = @_;
+   
    my $reu = "\0" x 8192;
    
    my $signature = substr($g64, 0, 8);
@@ -1773,6 +1777,7 @@ sub g64toreu
             die;
          }
       
+	 $trackContent =~ s/^\xFF+// if $level;
          my $tmp = $trackContent . ( "\0" x (8192-length($trackContent)) );
 	 my $flags = 4;
 	 $flags = 0x48 if index($trackContent, "\xFF") < 0;
@@ -1787,7 +1792,7 @@ sub g64toreu
       }
    }
    
-   substr($reu, 0, 4) = chr(2).chr(80).chr(2).chr(255); 
+   substr($reu, 0, 4) = chr(2).chr(80).chr(2).chr( $level ? 0 : 255); 
    
    $reu;
 }
