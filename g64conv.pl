@@ -18,10 +18,21 @@ if (@ARGV < 2)
    die "Syntax: g64conv.pl <from.g64> <to.txt> [mode]\n".
        "        g64conv.pl <from.txt> <to.g64>\n".
        "        g64conv.pl <from.d64> <to.g64>\n".
+       "        g64conv.pl <from.d71> <to.g64>\n".
        "        g64conv.pl <from.reu> <to.g64>\n".
        "        g64conv.pl <from.g64> <to.reu> [reduceSync]\n".
        "        g64conv.pl <fromTemplate.txt> <to.g64> <from.d64>\n".
-       "mode may be 0 (hex only) or 1 (gcr parsed, default).\n".
+       "        g64conv.pl <fromTemplate.txt> <to.g64> <from.d71>\n".
+
+       "        g64conv.pl <from.g71> <to.txt> [mode]\n".
+       "        g64conv.pl <from.txt> <to.g71>\n".
+       "        g64conv.pl <from.d64> <to.g71>\n".
+       "        g64conv.pl <from.d71> <to.g81>\n".
+       "        g64conv.pl <fromTemplate.txt> <to.g71> <from.d64>\n".
+       "        g64conv.pl <fromTemplate.txt> <to.g71> <from.d71>\n".
+
+       "mode may be 0 (hex only) or 1 (gcr parsed, default) or\n".
+       "        2 (gcr parsed with warp25 heuristic).\n".
        "        or p64 for p64 compatible flux position list\n".
        "reduceSync may be 0 (disabled) or 1 (enabled, default).\n";
 }
@@ -40,7 +51,7 @@ for my $i (keys %warp25tableEnc)
 
 
 
-if ($from =~ /\.g64$/i && $to =~ /\.txt$/)
+if ($from =~ /\.g((64)|(71))$/i && $to =~ /\.txt$/)
 {
    $level = 1 unless defined $level;
    my $g64 = readfileRaw($from);
@@ -53,7 +64,14 @@ elsif ($from =~ /\.d64$/i && $to =~ /\.g64$/)
 {
    my $txt = stddisk();
    my $d64 = readfileRaw($from);
-   my $g64 = txttog64($txt, $d64);
+   my $g64 = txttog64($txt, $d64, "1541");
+   writefileRaw($g64, $to);
+}
+elsif ($from =~ /\.d64$/i && $to =~ /\.g71$/)
+{
+   my $txt = stddisk();
+   my $d64 = readfileRaw($from);
+   my $g64 = txttog64($txt, $d64, "1571");
    writefileRaw($g64, $to);
 }
 elsif ($from =~ /\.reu$/i && $to =~ /\.g64$/)
@@ -73,7 +91,14 @@ elsif ($from =~ /\.d71$/i && $to =~ /\.g64$/)
 {
    my $txt = stddisk1571();
    my $d64 = readfileRaw($from);
-   my $g64 = txttog64($txt, $d64);
+   my $g64 = txttog64($txt, $d64, "1541");
+   writefileRaw($g64, $to);
+}
+elsif ($from =~ /\.d71$/i && $to =~ /\.g71$/)
+{
+   my $txt = stddisk1571();
+   my $d64 = readfileRaw($from);
+   my $g64 = txttog64($txt, $d64, "1571");
    writefileRaw($g64, $to);
 }
 elsif ($from =~ /\.txt$/i && $to =~ /\.g64$/)
@@ -81,16 +106,24 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.g64$/)
    my $txt = readfile($from);
    my $d64 = undef;
    $d64 = readfileRaw($level) if defined $level;
-   my $g64 = txttog64($txt, $d64);
+   my $g64 = txttog64($txt, $d64, "1541");
    writefileRaw($g64, $to);
 }
-elsif ($from =~ /\.g64$/i && $to =~ /\.d64$/)
+elsif ($from =~ /\.txt$/i && $to =~ /\.g71$/)
+{
+   my $txt = readfile($from);
+   my $d64 = undef;
+   $d64 = readfileRaw($level) if defined $level;
+   my $g64 = txttog64($txt, $d64, "1571");
+   writefileRaw($g64, $to);
+}
+elsif ($from =~ /\.g((64)|(71))$/i && $to =~ /\.d64$/)
 {
    my $g64 = readfileRaw($from);
    my $d64 = g64tod64($g64);
    writefileRaw($d64, $to);
 }
-elsif ($from =~ /\.g64$/i && $to =~ /\.d71$/)
+elsif ($from =~ /\.g((64)|(71))$/i && $to =~ /\.d71$/)
 {
    my $g64 = readfileRaw($from);
    my $d71 = g64tod71($g64);
@@ -151,7 +184,7 @@ sub g64totxt
    my $ret = "";
    
    my $signature = substr($g64, 0, 8);
-   return undef unless $signature eq 'GCR-1541';
+   return undef unless ($signature eq 'GCR-1541' || $signature eq 'GCR-1571');
 
    return undef unless substr($g64, 8, 1) eq "\0";
    
@@ -213,7 +246,7 @@ sub g64totxt
          my $trackBin = pack("H*", $tmp);
 	 my $trackContentBin = unpack("B*", $trackBin);
 	 
-         $tmp = parseTrack($trackContentBin, $speed);
+         $tmp = parseTrack($trackContentBin, $speed, $level);
 	 unless (defined $tmp)
 	 {
             $tmp .= "   speed $speed\n";
@@ -235,6 +268,7 @@ sub parseTrack
 {
    my $track = $_[0];
    my $speed = $_[1];
+   my $mode = $_[2];
    
    my $ret;
    my $beginat;
@@ -424,7 +458,7 @@ sub parseTrack
             $ret .= "   ; Trk ".hex($trk)." Sec ".hex($sec)."\n";
 	 }
       }
-      elsif ($a.$b eq "07" && substr($trackPart, 0, 14) eq "01010010101101")
+      elsif ($a.$b eq "07" && substr($trackPart, 0, 14) eq "01010010101101" && $mode == 2)
       {
          $ret .= "   ; warp 25 data\n";
          $ret .= "   gcr 07\n";
@@ -721,7 +755,7 @@ sub nibbleToGCR
 
 sub txttog64
 {
-   my ($text, $d64) = @_;
+   my ($text, $d64, $format) = @_;
    my $file;
    my $line;
    my $tracksizeHdr = 0;
@@ -864,6 +898,7 @@ sub txttog64
 
 	    my $tmp3 = unpack("B*", chr($warp25tableEnc{$checksum}));
 
+	    $curTrack =~ s/-{10}/$tmp2/g;
 	    $curTrack =~ s/_{8}/$tmp3/g;
 	 }
 	 $checksumBlock = 0;
@@ -1013,7 +1048,7 @@ sub txttog64
    }
    close $file;
    
-   my $g64 = "GCR-1541\0" . pack("C", $noTracks) . pack("S", $tracksizeHdr);
+   my $g64 = "GCR-$format\0" . pack("C", $noTracks) . pack("S", $tracksizeHdr);
    $g64 .= "\0\0\0\0" x $noTracks;
    $g64 .= "\0\0\0\0" x $noTracks;
    
@@ -1395,7 +1430,7 @@ sub g64tod64
    my $error = "\x02" x 683;
    
    my $signature = substr($g64, 0, 8);
-   return undef unless $signature eq 'GCR-1541';
+   return undef unless ($signature eq 'GCR-1541' || $signature eq 'GCR-1571');
 
    return undef unless substr($g64, 8, 1) eq "\0";
    
@@ -1469,7 +1504,7 @@ sub g64tod71
    my $error = "\x02" x 1366;
    
    my $signature = substr($g64, 0, 8);
-   return undef unless $signature eq 'GCR-1541';
+   return undef unless ($signature eq 'GCR-1541' || $signature eq 'GCR-1571');
 
    return undef unless substr($g64, 8, 1) eq "\0";
    
@@ -1556,7 +1591,7 @@ sub g64top64txt
    my $ret = "";
    
    my $signature = substr($g64, 0, 8);
-   return undef unless $signature eq 'GCR-1541';
+   return undef unless ($signature eq 'GCR-1541' || $signature eq 'GCR-1571');
 
    return undef unless substr($g64, 8, 1) eq "\0";
    
