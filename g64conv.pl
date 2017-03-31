@@ -249,8 +249,8 @@ sub g64totxt
          $tmp = parseTrack($trackContentBin, $speed, $level);
 	 unless (defined $tmp)
 	 {
-            $tmp .= "   speed $speed\n";
-	    $tmp = "   begin-at 0\n   bytes$trackContentHex\n";
+            $tmp =  "   speed $speed\n";
+	    $tmp .= "   begin-at 0\n   bytes$trackContentHex\n";
 	    $tmp .= "end-track\n\n";
 	 }
 	 
