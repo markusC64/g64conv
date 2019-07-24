@@ -1069,7 +1069,7 @@ sub txttog64
       my $tmp = pack("B*", $trackContent);
       my $siz = length($tmp);
       my $tmpSize = pack("S", $siz);
-      $g64 .= $tmpSize.$tmp.("\0" x ($tracksizeHdr/4-$siz));
+      $g64 .= $tmpSize.$tmp.("\0" x ($tracksizeHdr-$siz));
 
       if (length($trackSpeed) > 1)
       {
