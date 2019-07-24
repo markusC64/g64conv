@@ -66,7 +66,7 @@ elsif ($from =~ /\.g64$/i && $to =~ /\.g64$/i)
    my $txt;
    $txt = g64totxt($g64, 0);
    $g64 = txttog64($txt, undef, "1541");
-   writefileRaw($txt, $to);
+   writefileRaw($g64, $to);
 }
 elsif ($from =~ /\.g71$/i && $to =~ /\.g71$/i)
 {
@@ -74,7 +74,7 @@ elsif ($from =~ /\.g71$/i && $to =~ /\.g71$/i)
    my $txt;
    $txt = g64totxt($g64, 0);
    $g64 = txttog64($txt, undef, "1571");
-   writefileRaw($txt, $to);
+   writefileRaw($g64, $to);
 }
 elsif ($from =~ /\.d64$/i && $to =~ /\.g64$/)
 {
