@@ -60,6 +60,22 @@ if ($from =~ /\.g((64)|(71))$/i && $to =~ /\.txt$/)
    $txt = g64totxt($g64, $level) unless $level eq "p64";
    writefile($txt, $to);
 }
+elsif ($from =~ /\.g64$/i && $to =~ /\.g64$/i)
+{
+   my $g64 = readfileRaw($from);
+   my $txt;
+   $txt = g64totxt($g64, 0);
+   $g64 = txttog64($txt, undef, "1541");
+   writefile($txt, $to);
+}
+elsif ($from =~ /\.g71$/i && $to =~ /\.g71$/i)
+{
+   my $g64 = readfileRaw($from);
+   my $txt;
+   $txt = g64totxt($g64, 0);
+   $g64 = txttog64($txt, undef, "1571");
+   writefile($txt, $to);
+}
 elsif ($from =~ /\.d64$/i && $to =~ /\.g64$/)
 {
    my $txt = stddisk();
