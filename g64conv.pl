@@ -309,10 +309,12 @@ sub parseTrack
    $track = "$2$1";
    $beginat += 8;
 
-   if ($track =~m/^(.*?)(1{9})(1+)$/)
+   
+   my $revTrack = reverse $track;
+   if ($revTrack =~m/^(1+)(1{9})(.*)$/)
    {
-      my $offset = length($3);
-      $track = "$3$1$2";
+      my $offset = length($1);
+      $track = reverse "$2$3$1";
       $beginat -= $offset;
       $beginat += length($track) if $beginat < 0;
    }
@@ -1273,9 +1275,10 @@ sub parseTrack2
    $track =~ m/^(1{8})(.*)/;
    $track = "$2$1";
 
-   if ($track =~m/^(.*?)(1{9})(1+)$/)
+   my $revTrack = reverse $track;
+   if ($revTrack =~m/^(1+)(1{9})(.*)$/)
    {
-      $track = "$3$1$2";
+      $track = reverse "$2$3$1";
    }
    
    my $sector = undef;
