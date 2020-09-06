@@ -33,6 +33,7 @@ if (@ARGV < 2)
 
        "mode may be 0 (hex only) or 1 (gcr parsed, default) or\n".
        "        2 (gcr parsed with warp25 heuristic).\n".
+       "        3 (gcr parsed, max 16 bytes per line).\n".
        "        or p64 for p64 compatible flux position list\n".
        "reduceSync may be 0 (disabled) or 1 (enabled, default).\n";
 }
@@ -270,6 +271,7 @@ sub g64totxt
 	    $tmp .= "end-track\n\n";
 	 }
 	 
+         $trackRet .= "   ; length $trackSize\n";
 	 $trackRet .= $tmp;
       }
       
@@ -402,6 +404,8 @@ sub parseTrack
 	 my $sec = undef;
 	 
          my $checksum = 0;
+         my $checksumImage = 0;
+         my $checksumInvalid = 0;
 
          for (my $i=0; $i<7; $i++)
 	 {
@@ -413,6 +417,7 @@ sub parseTrack
             my $v3 = $trackPart =~ s/^(.{5})//;
 	    unless ($v3)
 	    {
+                  $ret =~ s/&&&&\n//sg;
                   $ret .= ";   block aborted\n";
 		  last;	       
 	    }
@@ -427,6 +432,7 @@ sub parseTrack
             my $v4 = $trackPart =~ s/^(.{5})//;
 	    unless ($v4)
 	    {
+                  $ret =~ s/&&&&\n//sg;
 		  $ret .= "   bits $e\n";
                   $ret .= ";   block aborted\n";
 		  last;	       
@@ -438,9 +444,11 @@ sub parseTrack
 	    if ($i == 0)
 	    {
 	       $ret .= "   begin-checksum\n";
+	       $ret .= "&&&&\n";
 	       $ret .= "      checksum $a$b\n" if (defined $a) && (defined $b);
 	       $ret .= "      checksum $e$f\n" unless (defined $a) && (defined $b);
 	       $checksum = hex("$a$b") if (defined $a) && (defined $b);
+	       $checksumImage = $checksum;
 	    }
 	    else
 	    {
@@ -458,6 +466,7 @@ sub parseTrack
 	       else
 	       {
 	          $ret .= "      bits $e$f\n" if $i < 5 ;
+	          $checksumInvalid = 1;
 	       }
 	       if ((defined $a) && (defined $b))
 	       {
@@ -469,6 +478,20 @@ sub parseTrack
 	       }
 	       $ret .= "   end-checksum\n" if $i == 4;
 	       $ret .= "   ; invalid checksum\n" if $checksum && $i == 4;
+	       if ($i == 4)
+	       {
+                   if ($checksum && !$checksumInvalid)
+                   {
+                   	my $corChecksum = $checksum ^ $checksumImage;
+                   	my $corChecksumHex = sprintf "%02x", $corChecksum;
+                   	$ret =~ s/&&&&/      ; checksum wrong, should be $corChecksumHex/g;
+                   }
+                   else
+                   {
+                   	## $ret =~ s/&&&&/      ; checksum ok/g;
+                   	$ret =~ s/&&&&\n//sg;
+                   }
+	       }
 	    }
 	 }
 	 if (defined($trk) && defined($sec))
@@ -598,6 +621,8 @@ sub parseTrack
          $ret .= "   begin-checksum\n";
 
          my $checksum = 0;
+         my $checksumImage = 0;
+         my $checksumInvalid = 0;
 
 	 my $gcr = "";
          for (my $i=0; $i<259; $i++)
@@ -645,9 +670,17 @@ sub parseTrack
 	       {
 	          $gcr .= " $a$b";
 		  $checksum ^= hex("$a$b");
+		  
+		  if (($i % 16 == 15) && ($mode == 3))
+		  {
+	             $ret .= "      gcr$gcr\n" if $gcr;
+		     $gcr = "";
+		  }
 	       }
 	       else
 	       {
+	       	  $checksumInvalid = 1;
+	       	
 	          $ret .= "      gcr$gcr\n" if $gcr;
 	          $ret .= "      bits $e$f\n";
 		  $gcr = "";
@@ -656,10 +689,20 @@ sub parseTrack
 	    elsif ($i == 256)
 	    {
 	          $ret .= "      gcr$gcr\n" if $gcr;
+
+		  $checksum ^= hex("$a$b") if (defined $a) && (defined $b);
+		  $checksumImage = hex("$a$b") if (defined $a) && (defined $b);
+
+                  if ($checksum && !$checksumInvalid)
+                  {
+                  	my $corChecksum = $checksum ^ $checksumImage;
+                   	my $corChecksumHex = sprintf "%02x", $corChecksum;
+                   	$ret .= "      ; checksum wrong, should be $corChecksumHex\n";
+                  }
+
 	          $ret .= "      checksum $a$b\n" if (defined $a) && (defined $b);
 	          $ret .= "      checksum $e$f\n" unless (defined $a) && (defined $b);
                   $ret .= "   end-checksum\n";
-		  $checksum ^= hex("$a$b") if (defined $a) && (defined $b);
 		  $ret .= "   ; invalid checksum\n" if $checksum;
 		  $gcr = "";
 	    }
@@ -1501,7 +1544,7 @@ sub g64tod64
 	    if (length($content) == 256)
 	    {
 	       substr($ret, $offset2, 256) = $content;
-	       substr($error, $offset1, 1) = "\0";
+	       substr($error, $offset1, 1) = "\1";
 	    }
 	    else
 	    {
@@ -1511,7 +1554,7 @@ sub g64tod64
       }      
    }
    
-   return $ret if $error eq "\0" x 683;
+   return $ret if $error eq "\1" x 683;
    
    $ret.$error;
 }
@@ -1589,7 +1632,7 @@ sub g64tod71
 	    if (length($content) == 256)
 	    {
 	       substr($ret, $offset2, 256) = $content;
-	       substr($error, $offset1, 1) = "\0";
+	       substr($error, $offset1, 1) = "\1";
 	    }
 	    else
 	    {
@@ -1599,7 +1642,7 @@ sub g64tod71
       }      
    }
    
-   return $ret if $error eq "\0" x 1366;
+   return $ret if $error eq "\1" x 1366;
    
    $ret.$error;
 }
