@@ -10,6 +10,8 @@
 #perl2exe_include "utf8.pm"
 #perl2exe_include "unicore/Heavy.pl"
 #perl2exe_include "unicore/lib/Perl/_PerlIDS.pl"
+#perl2exe_include "PerlIO.pm"
+#perl2exe_include "File/Glob.pm"
 
 use strict;
 
@@ -24,6 +26,12 @@ if (@ARGV < 2)
        "        g64conv.pl <fromTemplate.txt> <to.g64> <from.d64>\n".
        "        g64conv.pl <fromTemplate.txt> <to.g64> <from.d71>\n".
 
+       "        g64conv.pl <from??.0.raw.raw> <to.txt> <fluxMode> <rotation>\n".
+       "        g64conv.pl <from??.0.raw.raw> <to.g64> <rotation>\n".
+       "        g64conv.pl <from.txt> <to.txt>\n <mode|fluxMode>\n".
+
+       "        g64conv.pl <from.nb2> <to.txt> [mode]\n".
+
        "        g64conv.pl <from.g71> <to.txt> [mode]\n".
        "        g64conv.pl <from.txt> <to.g71>\n".
        "        g64conv.pl <from.d64> <to.g71>\n".
@@ -31,10 +39,15 @@ if (@ARGV < 2)
        "        g64conv.pl <fromTemplate.txt> <to.g71> <from.d64>\n".
        "        g64conv.pl <fromTemplate.txt> <to.g71> <from.d71>\n".
 
+       "        g64conv.pl filter <from.txt> <to.txt> <halftracks> <range> <offset>\n".
+
        "mode may be 0 (hex only) or 1 (gcr parsed, default) or\n".
        "        2 (gcr parsed with warp25 heuristic).\n".
        "        3 (gcr parsed, max 16 bytes per line).\n".
+       "        5 (gcr parsed, with raw bytes comment).\n".
+       "        6 (gcr parsed, max 16 bytes per line, with raw bytes comment).\n".
        "        or p64 for p64 compatible flux position list\n".
+       "fluxMode can be any value of mode and raw or rawUnpadded.\n".
        "reduceSync may be 0 (disabled) or 1 (enabled, default).\n";
 }
 
@@ -42,6 +55,7 @@ if (@ARGV < 2)
 my $from = $ARGV[0];
 my $to = $ARGV[1];
 my $level = $ARGV[2];
+my $pass = $ARGV[3];
 
 my %warp25tableEnc = ( 0 => 73, 1 => 74, 2 => 75, 3 => 77, 4 => 78, 5 => 82, 6 => 83, 7 => 85, 8 => 86, 9 => 89, 10 => 90, 11 => 91, 12 => 93, 13 => 94, 14 => 101, 15 => 102, 32 => 105, 33 => 106, 34 => 107, 35 => 109, 36 => 110, 37 => 114, 38 => 115, 39 => 117, 40 => 118, 41 => 121, 42 => 122, 43 => 123, 44 => 146, 45 => 147, 46 => 149, 47 => 150, 64 => 153, 65 => 154, 66 => 155, 67 => 157, 68 => 158, 69 => 165, 70 => 166, 71 => 169, 72 => 170, 73 => 171, 74 => 173, 75 => 174, 76 => 178, 77 => 179, 78 => 181, 79 => 182, 96 => 185, 97 => 186, 98 => 187, 99 => 189, 100 => 201, 101 => 202, 102 => 203, 103 => 205, 104 => 206, 105 => 210, 106 => 211, 107 => 213, 108 => 214, 109 => 217, 110 => 218, 111 => 219,  );
 my %warp25tableDec = ();
@@ -52,7 +66,7 @@ for my $i (keys %warp25tableEnc)
 
 
 
-if ($from =~ /\.g((64)|(71))$/i && $to =~ /\.txt$/)
+if ($from =~ /\.g((64)|(71))$/i && $to =~ /\.txt$/i)
 {
    $level = 1 unless defined $level;
    my $g64 = readfileRaw($from);
@@ -77,75 +91,467 @@ elsif ($from =~ /\.g71$/i && $to =~ /\.g71$/i)
    $g64 = txttog64($txt, undef, "1571");
    writefileRaw($g64, $to);
 }
-elsif ($from =~ /\.d64$/i && $to =~ /\.g64$/)
+elsif ($from =~ /\.d64$/i && $to =~ /\.g64$/i)
 {
    my $txt = stddisk();
    my $d64 = readfileRaw($from);
    my $g64 = txttog64($txt, $d64, "1541");
    writefileRaw($g64, $to);
 }
-elsif ($from =~ /\.d64$/i && $to =~ /\.g71$/)
+elsif ($from =~ /\.d64$/i && $to =~ /\.g71$/i)
 {
    my $txt = stddisk();
    my $d64 = readfileRaw($from);
    my $g64 = txttog64($txt, $d64, "1571");
    writefileRaw($g64, $to);
 }
-elsif ($from =~ /\.reu$/i && $to =~ /\.g64$/)
+elsif ($from =~ /\.reu$/i && $to =~ /\.g64$/i)
 {
    my $reu = readfileRaw($from);
    my $g64 = reutog64($reu);
    writefileRaw($g64, $to);
 }
-elsif ($from =~ /\.g64$/i && $to =~ /\.reu$/)
+elsif ($from =~ /\.g64$/i && $to =~ /\.reu$/i)
 {
    $level = 1 unless defined $level;
    my $reu = readfileRaw($from);
    my $g64 = g64toreu($reu, $level);
    writefileRaw($g64, $to);
 }
-elsif ($from =~ /\.d71$/i && $to =~ /\.g64$/)
+elsif ($from =~ /\.d71$/i && $to =~ /\.g64$/i)
 {
    my $txt = stddisk1571();
    my $d64 = readfileRaw($from);
    my $g64 = txttog64($txt, $d64, "1541");
    writefileRaw($g64, $to);
 }
-elsif ($from =~ /\.d71$/i && $to =~ /\.g71$/)
+elsif ($from =~ /\.d71$/i && $to =~ /\.g71$/i)
 {
    my $txt = stddisk1571();
    my $d64 = readfileRaw($from);
    my $g64 = txttog64($txt, $d64, "1571");
    writefileRaw($g64, $to);
 }
-elsif ($from =~ /\.txt$/i && $to =~ /\.g64$/)
+elsif ($from =~ /\.txt$/i && $to =~ /\.g((64)|(71))$/i)
 {
+   my $dest = "1541";
+   $dest = "1571" if $to =~ /\.g71$/i;
+
    my $txt = readfile($from);
-   my $d64 = undef;
-   $d64 = readfileRaw($level) if defined $level;
-   my $g64 = txttog64($txt, $d64, "1541");
-   writefileRaw($g64, $to);
+   if ($txt =~ /^\s+flux/mi)
+   {
+       my $p64 = parseP64txt($txt);
+       
+       my $ret0 .= "no-tracks 168\ntrack-size 7928\n";
+       my $ret1 = "";
+       
+       my $tracks = $p64->{tracks};
+
+      foreach my $trackData (@$tracks)
+      {
+         my $trackNoRaw = $trackData->{track};
+        my $trackNo = $trackNoRaw;
+         my $side = 0;
+      	 if ($trackNo > 127.75)
+      	 {
+      	    $trackNo -= 128;
+      	    $side = 1;
+      	 }
+         
+        my $Flux = normalizeP64Flux ($trackData->{flux});
+
+         my $speed = getSpeedZone1($Flux);
+         my $bitstream = fluxtobitstream($Flux, $speed);
+         $bitstream = padbitstream($bitstream);
+        
+            if ($side == 0)
+            {
+               $ret0 .= "track $trackNo\n";
+               $ret0 .= "   speed $speed\n";
+               $ret0 .= "   bits $bitstream\n";
+               $ret0 .= "end-track\n";
+            }
+            else
+            {
+               $ret1 .= "track $trackNo\n";
+               $ret1 .= "   speed $speed\n";
+               $ret1 .= "   bits $bitstream\n";
+               $ret1 .= "end-track\n";
+            }
+      
+      }
+     
+       my $ret = "no-tracks 84\ntrack-size 7928\n" unless $ret1;
+       $ret .= "no-tracks 168\ntrack-size 7928\n" if $ret1;
+       my $gxx = txttog64($ret.$ret0.$ret1, undef,  $dest);
+       writefileRaw($gxx, $to);
+   }
+   else
+   {
+      my $d64 = undef;
+      $d64 = readfileRaw($level) if defined $level;
+      my $g64 = txttog64($txt, $d64, $dest);
+      writefileRaw($g64, $to);
+   }
 }
-elsif ($from =~ /\.txt$/i && $to =~ /\.g71$/)
-{
-   my $txt = readfile($from);
-   my $d64 = undef;
-   $d64 = readfileRaw($level) if defined $level;
-   my $g64 = txttog64($txt, $d64, "1571");
-   writefileRaw($g64, $to);
-}
-elsif ($from =~ /\.g((64)|(71))$/i && $to =~ /\.d64$/)
+elsif ($from =~ /\.g((64)|(71))$/i && $to =~ /\.d64$/i)
 {
    my $g64 = readfileRaw($from);
    my $d64 = g64tod64($g64);
    writefileRaw($d64, $to);
 }
-elsif ($from =~ /\.g((64)|(71))$/i && $to =~ /\.d71$/)
+elsif ($from =~ /\.g((64)|(71))$/i && $to =~ /\.d71$/i)
 {
    my $g64 = readfileRaw($from);
    my $d71 = g64tod71($g64);
    writefileRaw($d71, $to);
 }
+elsif ($from =~ /\.nb2$/i && $to =~ /\.txt$/i)
+{
+   my $nb2 = readfileRaw($from);
+   my $txt = nb2totxt($nb2, $level // 1, $pass // 0);
+   writefile($txt, $to);
+}
+elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.txt$/i)
+{
+   $level = 1 unless defined $level;
+   $pass = 0 unless defined $pass;
+
+  my @src = sort glob $from;
+  
+  my $ret = "";
+  $ret .= "no-tracks 84\ntrack-size 7928\n"  if $level ne "p64";
+
+  for my $filename (@src)
+  {
+     $filename =~ /(..)\.([01])\.raw$/i;
+     my ($rawtrack, $side) = ($1, $2);
+     my $trackNo = $rawtrack/2+1;
+     
+     ## next if $rawtrack % 2 == 1;
+     
+     print "Parsiing $filename\n";
+
+     my $track = readfileRaw($filename);
+     my $fluxRaw = parseKryofluxRawFile($track);
+     my $fluxMetadata = extractRotation($fluxRaw, $pass);
+     my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
+     $Flux = reverseFlux($Flux) if $side == 1;
+
+     if ($level eq "p64")
+     {
+        $ret .= "track $trackNo\n";
+        my $sum = 1;
+        for my $v (@$Flux)
+        {
+           my $y = $v * 3200000 ;
+           $sum += $y;
+           $sum -= 3200000 if $sum >= 3200000;
+           $ret .= "   flux $sum\n";
+        }
+     }
+     else
+     {
+        my $speed = getSpeedZone1($Flux);
+        my $bitstream = fluxtobitstream($Flux, $speed);
+        $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
+        
+        $ret .= "track $trackNo\n";
+        $ret .= "   speed $speed\n";
+        $ret .= "   bits $bitstream\n";
+        $ret .= "end-track\n";
+     }
+  }
+        if ($level ne "raw" && $level ne "rawUnpadded" && $level ne "p64")
+        {
+             my $g64 = txttog64($ret, undef, "1541");
+             $ret = g64totxt($g64, $level)
+        }
+    
+  writefile($ret, $to);
+}
+elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.g64$/i)
+{
+   $level = "0" unless defined $level;
+
+  my @src = sort glob $from;
+  
+  my $ret .= "no-tracks 84\ntrack-size 7928\n";
+
+  for my $filename (@src)
+  {
+     $filename =~ /(..)\.([01])\.raw$/i;
+     my ($rawtrack, $side) = ($1, $2);
+     my $trackNo = $rawtrack/2+1;
+     
+     ## next if $rawtrack % 2 == 1;
+     
+     print "Parsiing $filename\n";
+
+     my $track = readfileRaw($filename);
+     my $fluxRaw = parseKryofluxRawFile($track);
+     my $fluxMetadata = extractRotation($fluxRaw, $level);
+     my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
+     $Flux = reverseFlux($Flux) if $side == 1;
+
+     my $speed = getSpeedZone1($Flux);
+     my $bitstream = fluxtobitstream($Flux, $speed);
+     $bitstream = padbitstream($bitstream);
+    
+     $ret .= "track $trackNo\n";
+     $ret .= "   speed $speed\n";
+     $ret .= "   bits $bitstream\n";
+     $ret .= "end-track\n";
+  }
+  
+  my $g64 = txttog64($ret, undef, "1541");
+  writefileRaw($g64, $to);
+}
+
+
+
+
+elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.txt$/i)
+{
+   $level = 1 unless defined $level;
+   $pass = 0 unless defined $pass;
+
+  my @src = sort glob $from;
+  
+  my $ret0 = "";
+  my $ret1 = "";
+  $ret0 .= "no-tracks 168\ntrack-size 7928\n"  if $level ne "p64";
+  $ret0 = "sides 2\n" if $level eq "p64";
+
+  for my $filename (@src)
+  {
+     $filename =~ /(..)\.([01])\.raw$/i;
+     my ($rawtrack, $side) = ($1, $2);
+     my $trackNo = $rawtrack/2+1;
+     
+     ## next if $rawtrack % 2 == 1;
+     
+     print "Parsiing $filename\n";
+
+     my $track = readfileRaw($filename);
+     my $fluxRaw = parseKryofluxRawFile($track);
+     my $fluxMetadata = extractRotation($fluxRaw, $pass);
+     my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
+
+     if ($level eq "p64")
+     {
+     	$trackNo += 128 if $side == 1;
+        $ret0 .= "track $trackNo\n" if $side == 0;
+        $ret1 .= "track $trackNo\n" if $side == 0;
+        my $sum = 1;
+        for my $v (@$Flux)
+        {
+           my $y = $v * 3200000;
+           $sum += $y;
+           $sum -= 3200000 if $sum >= 3200000;
+           $ret0 .= "   flux $sum\n" if $side == 0;
+           $ret1 .= "   flux $sum\n" if $side == 1;
+        }
+     }
+     else
+     {
+     	$trackNo += 42 if $side == 1;
+        my $speed = getSpeedZone1($Flux);
+        my $bitstream = fluxtobitstream($Flux, $speed);
+        $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
+        
+        if ($side == 0)
+        {
+           $ret0 .= "track $trackNo\n";
+           $ret0 .= "   speed $speed\n";
+           $ret0 .= "   bits $bitstream\n";
+           $ret0 .= "end-track\n";
+        }
+        else
+        {
+           $ret1 .= "track $trackNo\n";
+           $ret1 .= "   speed $speed\n";
+           $ret1 .= "   bits $bitstream\n";
+           $ret1 .= "end-track\n";
+        }
+     }
+  }
+  
+  my $ret = $ret0.$ret1;
+        if ($level ne "raw" && $level ne "rawUnpadded" && $level ne "p64")
+        {
+             my $g64 = txttog64($ret, undef, "1541");
+             $ret = g64totxt($g64, $level)
+        }
+  writefile($ret, $to);
+}
+elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.g((64)|(71))$/i)
+{
+   my $dest = "1541";
+   $dest = "1571" if $to =~ /\.g71$/i;
+	
+   $level = "0" unless defined $level;
+
+  my @src = sort glob $from;
+  
+  my $ret0 .= "no-tracks 168\ntrack-size 7928\n";
+  my $ret1 = "";
+
+  for my $filename (@src)
+  {
+     $filename =~ /(..)\.([01])\.raw$/i;
+     my ($rawtrack, $side) = ($1, $2);
+     my $trackNo = $rawtrack/2+1;
+     
+     ## next if $rawtrack % 2 == 1;
+     
+     print "Parsiing $filename\n";
+
+     my $track = readfileRaw($filename);
+     my $fluxRaw = parseKryofluxRawFile($track);
+     my $fluxMetadata = extractRotation($fluxRaw, $level);
+     my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
+     $Flux = reverseFlux($Flux) if $side == 1;
+
+     my $speed = getSpeedZone1($Flux);
+     my $bitstream = fluxtobitstream($Flux, $speed);
+     $bitstream = padbitstream($bitstream);
+    
+        if ($side == 0)
+        {
+           $ret0 .= "track $trackNo\n";
+           $ret0 .= "   speed $speed\n";
+           $ret0 .= "   bits $bitstream\n";
+           $ret0 .= "end-track\n";
+        }
+        else
+        {
+           $ret1 .= "track $trackNo\n";
+           $ret1 .= "   speed $speed\n";
+           $ret1 .= "   bits $bitstream\n";
+           $ret1 .= "end-track\n";
+        }
+  }
+  
+  my $gxx = txttog64($ret0.$ret1, undef,  $dest);
+  writefileRaw($gxx, $to);
+}
+
+elsif ($from =~ /\.txt$/i && $to =~ /\.txt$/i)
+{
+   $level = 1 unless defined $level;
+   my $txt = readfile($from);
+   if ($txt =~ /^\s+flux/mi)
+   {
+       my $p64 = parseP64txt($txt);
+       
+       my $ret0 .= "no-tracks 168\ntrack-size 7928\n";
+       my $ret1 = "";
+       
+       my $tracks = $p64->{tracks};
+
+      foreach my $trackData (@$tracks)
+      {
+         my $trackNoRaw = $trackData->{track};
+        my $trackNo = $trackNoRaw;
+         my $side = 0;
+      	 if ($trackNo > 127.75)
+      	 {
+      	    $trackNo -= 128;
+      	    $side = 1;
+      	 }
+         
+        my $Flux = normalizeP64Flux ($trackData->{flux});
+
+         my $speed = getSpeedZone1($Flux);
+         my $bitstream = fluxtobitstream($Flux, $speed);
+         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
+        
+            if ($side == 0)
+            {
+               $ret0 .= "track $trackNo\n";
+               $ret0 .= "   speed $speed\n";
+               $ret0 .= "   bits $bitstream\n";
+               $ret0 .= "end-track\n";
+            }
+            else
+            {
+               $ret1 .= "track $trackNo\n";
+               $ret1 .= "   speed $speed\n";
+               $ret1 .= "   bits $bitstream\n";
+               $ret1 .= "end-track\n";
+            }
+      
+      }
+     
+       my $ret = "no-tracks 84\ntrack-size 7928\n" unless $ret1;
+       $ret .= "no-tracks 168\ntrack-size 7928\n" if $ret1;
+       
+       if ($level ne "raw" && $level ne "rawUnpadded")
+       {
+         my $gxx = txttog64($ret.$ret0.$ret1, undef,  "1541");
+         $txt = g64totxt($gxx, $level);
+       }
+       else
+       {
+          $txt = $ret.$ret0.$ret1;
+       }
+      writefile($txt, $to);
+   }
+   else
+   {
+      $level = 1 unless defined $level;
+      my $g64 = txttog64($txt, undef, "1541");
+      my $txt;
+      $txt = g64top64txt($g64) if $level eq "p64";
+      $txt = g64totxt($g64, $level) unless $level eq "p64";
+      writefile($txt, $to);
+   }
+}
+elsif ($from eq "filter" &&  $to =~ /\.txt$/i)
+{
+   my $print = 1;
+   my $From = 1;
+   my $To = 86;
+
+   $pass = "0" unless defined $pass;
+   my $range = $ARGV[4];
+   $range = "1..86" unless defined $range;
+   my $ret = "";
+   
+   if ($range =~ /^([0-9\.]+)\.\.([0-9\.]+)$/)
+   {
+   	$From = $1;
+   	$To = $2;
+   }
+   elsif ($range =~ /^([0-9\.]+)$/ )
+   {
+   	$From = $1;
+   	$To = $1;
+   }
+   my $offset = $ARGV[5];
+   $offset = "0" unless defined $offset;
+   
+   open (my $file, "<", $to);
+
+   while (<$file>)
+   {
+      chomp;
+      if ( /^\s*track (.+)$/ )
+      {
+      	 my $tr = $1;
+         $print = 1;
+         $print = 0 if $tr =~ /\.5$/ && !$pass;
+         $print = 0 unless $tr >= $From && $tr <= $To;
+         $ret .= "track " . ($tr+$offset) . "\n"if $print;
+         next;
+      }
+      $ret .=  "$_\n" if $print;
+   }
+
+   writefile($ret, $level);
+}
+
 else
 {
    die "Unknown conversion\n";
@@ -263,7 +669,7 @@ sub g64totxt
          my $trackBin = pack("H*", $tmp);
 	 my $trackContentBin = unpack("B*", $trackBin);
 	 
-         $tmp = parseTrack($trackContentBin, $speed, $level);
+         $tmp = parseTrack($trackContentBin, $speed, $level, 1);
 	 unless (defined $tmp)
 	 {
             $tmp =  "   speed $speed\n";
@@ -287,40 +693,44 @@ sub parseTrack
    my $track = $_[0];
    my $speed = $_[1];
    my $mode = $_[2];
+   my $normalize = $_[3];
    
    my $ret;
    my $beginat;
    my $curspeed;
    
-   unless ($track =~ /^(.*?)(1111111111)(.*)$/ )
+   if ($normalize)
    {
-      return undef;
-   }
-   
-   $track = "$2$3$1";
-   $beginat = length($1);
-   
-   if ($track =~ m/^(1+0101010111.*?)(1{9}.*)$/ )
-   {
-      my $offset = length($1);
+      unless ($track =~ /^(.*?)(1111111111)(.*)$/ )
+      {
+         return undef;
+      }
+      
+      $track = "$2$3$1";
+      $beginat = length($1);
+      
+      if ($track =~ m/^(1+0101010111.*?)(1{9}.*)$/ )
+      {
+         my $offset = length($1);
+         $track = "$2$1";
+         $beginat += $offset;
+      }
+      
+      $track =~ m/^(1{8})(.*)/;
       $track = "$2$1";
-      $beginat += $offset;
+      $beginat += 8;
+   
+      
+      my $revTrack = reverse $track;
+      if ($revTrack =~m/^(1+)(1{9})(.*)$/)
+      {
+         my $offset = length($1);
+         $track = reverse "$2$3$1";
+         $beginat -= $offset;
+         $beginat += length($track) if $beginat < 0;
+      }
    }
-   
-   $track =~ m/^(1{8})(.*)/;
-   $track = "$2$1";
-   $beginat += 8;
-
-   
-   my $revTrack = reverse $track;
-   if ($revTrack =~m/^(1+)(1{9})(.*)$/)
-   {
-      my $offset = length($1);
-      $track = reverse "$2$3$1";
-      $beginat -= $offset;
-      $beginat += length($track) if $beginat < 0;
-   }
-   
+      
    if (length($speed) > 1)
    {
       $speed = substr($speed, $beginat) . substr($speed, 0, $beginat);
@@ -369,6 +779,21 @@ sub parseTrack
       {
          $trackPart = $track;
 	 $trackRest = "";
+      }
+      
+      if ($mode == 5 || $mode == 6)
+      {
+         my $trackPart2 = $trackPart;
+         while (length ($trackPart2) >= 8)
+         {
+            $trackPart2 =~ s/^((.{8})+)//;
+            my $trackBin = pack("B*", $1);
+	    my $trackContentHex = unpack("H*", $trackBin);
+            $trackContentHex =~ s/(..)/ $1/gc;
+	    $ret .= "   ; Following raw bytes: $trackContentHex\n";
+         }
+      
+         $ret .= "   ; Following raw bits: $trackPart2\n" if $trackPart2 ne '';
       }
       
       my $v1 = $trackPart =~ s/^(.{5})//;
@@ -671,7 +1096,7 @@ sub parseTrack
 	          $gcr .= " $a$b";
 		  $checksum ^= hex("$a$b");
 		  
-		  if (($i % 16 == 15) && ($mode == 3))
+		  if (($i % 16 == 15) && ($mode == 3 || $mode == 6))
 		  {
 	             $ret .= "      gcr$gcr\n" if $gcr;
 		     $gcr = "";
@@ -933,6 +1358,7 @@ sub txttog64
       {
          my $par = $1;
 	 $par =~ s/ //g;
+	 $par =~ s/2/1/g;
 	 $curTrack .= $par;
 	 $checksumBlock = 2 if $checksumBlock == 1;
       }
@@ -1660,7 +2086,7 @@ sub g64top64txt
    my $notracks = unpack("C", substr($g64, 9, 1));
    my $tracksizeHdr = unpack("S", substr($g64, 0xA, 2));
    
-   # my %p64data = ();
+   $ret .= "sides 2\n" if $notracks >= 86;
    
    for (my $i=1; $i<$notracks; $i++)
    {
@@ -1892,4 +2318,533 @@ sub g64toreu
    substr($reu, 0, 4) = chr(2).chr(80).chr(2).chr( $level ? 0 : 255); 
    
    $reu;
+}
+
+sub nb2totxt
+{
+   my ($nb2, $level, $pass) = @_;
+   my $ret = "";
+   
+   my $signature = substr($nb2, 0, 13);
+   return undef unless ($signature eq 'MNIB-1541-RAW');
+
+
+   for (my $i=1; $i<128; $i++)
+   {
+      my $track = ($i+1)/2;
+      last if substr( $nb2, 256+8192*32*($track-1), 1) eq "";
+      print STDERR "DEBUG: track=$track\n";
+
+      for (my $speed = 0; $speed < 4; $speed++)
+      {
+              my $trackContent =  substr( $nb2, 256+8192*(32*($track-1)+4*$speed+$pass), 8192 );
+              my $trackContentBin = unpack("B*", $trackContent);
+           
+              # This is not optimal, but fo rthe time being:
+              $trackContentBin =~ s/^.*?1111111111/1111111111/;
+              $trackContentBin = reverse $trackContentBin;
+              $trackContentBin =~ s/^.*?1111111111/1111111111/;
+              $trackContentBin =~ s/^1+//;
+              $trackContentBin = reverse $trackContentBin;
+              
+              $ret .= "; track $track speed $speed pass $pass\n";
+              $ret .= "rawtrack $track\n";
+              $ret .= parseTrack($trackContentBin, $speed, $level, 0);  
+      }
+   }
+   
+   
+   $ret;
+}
+
+
+
+
+
+### Flux related
+
+sub parseKryofluxRawFile
+{
+   my $data = $_[0];
+   my $pos = 0;
+   my @res;
+   my $ovl = 0;
+   my @indicies = ();
+   my $oobCount = 0;
+   my $fluxSum = 0;
+   
+   my $sck = undef;
+   my $ick = undef;
+   
+   while (1)
+   {
+   	my $type = unpack "C", substr $data, $pos, 1;
+   	
+   	if ($type < 8)   # Flux2
+   	{
+   	   my $val = unpack "n", substr $data, $pos, 2;
+   	   $fluxSum += $val + $ovl;
+   	   
+   	   my %tmp = ();
+   	   $tmp{Value} = $val + $ovl;
+   	   $tmp{FluxSum} = $fluxSum;
+   	   $tmp{streamPos} = $pos - $oobCount;
+   	   
+           push (@res, \%tmp);
+   	   
+   		$pos += 2;
+   		$ovl = 0;
+   	}
+   	elsif ($type == 8)   # Nop1
+   	{
+   		$pos += 1;
+   	}
+   	elsif ($type == 9)   # Nop2
+   	{
+   		$pos += 2;
+   	}
+   	elsif ($type == 10)   # Nop3
+   	{
+   		$pos += 3;
+   	}
+   	elsif ($type == 11)   # Ovl16
+   	{
+              $ovl += 0x10000;
+   		$pos += 1;
+   	}
+   	elsif ($type == 12)   # Flux3
+   	{
+   	   my $val = unpack "n", substr $data, $pos+1, 1;
+           $fluxSum += $val + $ovl;
+
+   	   my %tmp = ();
+   	   $tmp{Value} = $val + $ovl;
+   	   $tmp{streamPos} = $pos - $oobCount;
+   	   $tmp{FluxSum} = $fluxSum;
+           push (@res, \%tmp);
+   	   
+   		$pos += 3;
+   		$ovl = 0;
+   	}
+   	elsif ($type == 13)   # OOB
+   	{
+   	   my $oobtype = unpack "C", substr $data, $pos+1, 1;
+   	   my $oobsize = unpack "v", substr $data, $pos+2, 2;
+   	   
+   	   if ($oobtype == 0) # INVALID
+   	   {
+   	   	print "Warning: Invalid OOB type discovered\n";
+   	   }
+   	   elsif ($oobtype == 1) # STREAMINFO
+   	   {
+   	   	my $streamPos = unpack "V", substr $data, $pos+4, 4;
+   	   	my $transferTime = unpack "V", substr $data, $pos+8, 4;
+   	   	
+   	   	my $tmp = $pos - $oobCount;
+   	   	print "Error reading stream: Missed some data\n" unless $tmp == $streamPos;
+   	   	
+   	   }
+   	   elsif ($oobtype == 2) # Index
+   	   {
+   	   	my $streamPos = unpack "V", substr $data, $pos+4, 4;
+   	   	my $sampleCounter = unpack "V", substr $data, $pos+8, 4;
+   	   	my $IndexCounter = unpack "V", substr $data, $pos+12, 4;
+   	   	
+   	        my %tmp = ();;
+   	        $tmp{streamPos} = $streamPos;
+   	        $tmp{sampleCounter} = $sampleCounter;
+   	        $tmp{indexCounter} = $IndexCounter;
+   	        
+   	   	
+   	   	push (@indicies, \%tmp);
+   	   }
+   	   elsif ($oobtype == 3) # StreamEnd
+   	   {
+   	   	my $streamPos = unpack "V", substr $data, $pos+4, 4;
+   	   	my $resultCode = unpack "V", substr $data, $pos+8, 4;
+   	   	my $tmp = $pos - $oobCount;
+   	   	print "Error reading stream: Missed some data\n" unless $tmp == $streamPos;
+   	   	print "Error reading stream; Code=$resultCode\n" unless $resultCode == 0;
+   	   }
+   	   elsif ($oobtype == 4) # KFInfo
+   	   {
+   	   	my $infotext = substr($data, $pos+4, $oobsize-1);
+   	   	
+   	   	if ($infotext =~ m/sck=([0-9\.]+)/ )
+   	   	{
+   	   		$sck = $1 - 0;
+   	   	}
+   	   	if ($infotext =~ m/ick=([0-9\.]+)/ )
+   	   	{
+   	   		$ick = $1 - 0;
+   	   	}
+   	   }
+   	   elsif ($oobtype == 13) # EOF
+   	   {
+   	   	last;
+   	   }
+   	   
+   	   $pos += 4+$oobsize;
+   	   $oobCount += 4+$oobsize;
+   		
+   	}
+   	else # Flux1
+   	{
+           $fluxSum += $type + $ovl;
+   	   my %tmp = ();
+   	   $tmp{Value} = $type + $ovl;
+   	   $tmp{streamPos} = $pos - $oobCount;
+   	   $tmp{FluxSum} = $fluxSum;
+           push (@res, \%tmp);
+      	   $pos += 1;
+   		
+           $ovl = 0;
+   	}
+   }
+   
+   my %ret;
+   $ret{sck} = $sck;
+   $ret{ick} = $ick;
+   $ret{flux} = \@res;
+   $ret{indicies} = \@indicies;
+   
+   \%ret;
+}
+
+sub extractRotation
+{
+   my ($content, $rotation) = @_;
+
+   my $refIndicies = $content->{indicies};
+   my $refFlux = $content->{flux};
+   my $noRotations = scalar @$refIndicies;
+   my $rotNo = -1;
+   
+   my %ret = ();
+   
+   for (my $i=0; $i<$noRotations-1; $i++)
+   {
+      my $streamPosInd = $refIndicies->[$i]{streamPos};
+      my @index = grep { $_->{streamPos} < $streamPosInd  } @$refFlux;
+      my $prevIndex1 = @index- 1;
+      
+      next if $prevIndex1 < 0;
+
+      $streamPosInd = $refIndicies->[$i+1]{streamPos};
+      @index = grep { $_->{streamPos} < $streamPosInd  } @$refFlux;
+      my $prevIndex2 = @index - 1;
+
+      next if $prevIndex1 >= @$refFlux - 1;
+
+      $rotNo++;
+      next if $rotNo != $rotation;
+      
+      my $bestError = undef;
+      my $bestOffset = undef;
+      
+      for my $offset (-10..10)
+      {
+      	my $delta = abs ($refFlux->[$prevIndex2+$offset]{FluxSum} - $refFlux->[$prevIndex2]{FluxSum});
+      	next if $delta > 300;
+      	
+      	my $err = 0;
+      	
+      	for my $i (-25..25)
+      	{
+           my $val1 = $refFlux->[$prevIndex1 + $i]{Value};
+           my $val2 = $refFlux->[$prevIndex2 + $i + $offset]{Value};
+           
+           $err += abs($val1 - $val2);
+      	}
+      	
+      	if ((!defined $bestError) || ($bestError > $err))
+      	{
+           $bestOffset = $offset;
+           $bestError = $err;
+      	}
+      }
+      
+      $prevIndex2 += $bestOffset if defined $bestOffset;
+
+      my $fluxSum = $refFlux->[$prevIndex2-1]{FluxSum} - $refFlux->[$prevIndex1-1]{FluxSum};
+      
+
+      $ret{index1} = $prevIndex1;
+      $ret{index2} = $prevIndex2;
+      
+      $ret{adjustFlux1} = $refIndicies->[$i]{sampleCounter};
+      $ret{adjustFlux2} = $refIndicies->[$i+1]{sampleCounter};
+      
+      $ret{fluxSum} = $fluxSum;
+      $ret{tracktime} = $fluxSum / $content->{sck};;
+      $ret{rpm} = 60 / $fluxSum * $content->{sck};;
+      return \%ret;
+   }
+   
+   undef;
+}
+
+
+sub kryofluxNormalize
+{
+   my ($fluxRaw, $flux0Metadata) = @_;
+   
+   my @ret = ();
+   
+   my $sck = $fluxRaw->{sck};
+   my $idx1 = $flux0Metadata->{index1};
+   my $idx2 = $flux0Metadata->{index2};
+   my $rpm = $flux0Metadata->{rpm};
+ 
+   ### FIXME: Position des allerersten Flux (Abstand Index)
+   for (my $i=$idx1; $i < $idx2; $i++ )
+   {
+      my $val = $fluxRaw->{flux}[$i]{Value};
+      $val = $val / $sck *5 * $rpm / 300;
+      push (@ret, $val);
+   }
+   \@ret;
+}
+
+
+
+
+sub getSpeedZone1
+{
+   my $flux = $_[0];	
+   my @hist = (0) x 200;
+   
+   for my $v (@$flux)
+   {
+      my $vv = $v / 5 * 300 / 360;
+      my $vvv = int $vv / 6.25e-8;
+      next if $vvv >= 200;
+      $hist[$vvv]++;
+   }
+   
+   my $maxVal = 0;
+   my $maxIdx = 0;
+   for my $i (71..112)
+   {
+      my $v = $hist[$i];
+      if ($v > $maxVal)
+      {
+      	$maxVal = $v;
+      	$maxIdx = $i;
+      }
+   }
+   
+   return undef unless $maxVal;
+   
+   my $maxPos2 = $maxIdx * 6.25e-8;
+   my $delta0 = abs(6.5625e-6 - $maxPos2);
+   my $delta1 = abs(6.1875e-6 - $maxPos2);
+   my $delta2 = abs(5.8125e-6 - $maxPos2);
+   my $delta3 = abs(5.3125e-6 - $maxPos2);
+   
+   my $speed = undef;
+   $speed=0 if $delta0 < $delta1 && $delta0 < $delta2 && $delta0 < $delta3;
+   $speed=1 if $delta1 < $delta0 && $delta1 < $delta2 && $delta1 < $delta3;
+   $speed=2 if $delta2 < $delta0 && $delta2 < $delta1 && $delta2 < $delta3;
+   $speed=3 if $delta3 < $delta0 && $delta3 < $delta1 && $delta3 < $delta2;
+   
+   return undef unless defined $speed;
+   
+   my $delta = $delta0;
+   $delta = $delta1 if $speed == 1;
+   $delta = $delta2 if $speed == 2;
+   $delta = $delta3 if $speed == 3;
+   
+   return undef if $delta > 0.3125e-6;
+   $speed;
+}
+
+sub fluxtobitstream
+{
+   my ($flux, $speed) = @_;
+   my $bits = "";
+      
+   
+   my $pulseactive = 0;
+   my $counterdelay = 0;
+   my $bitwinremain = 0;
+   my $bitcounter = 0;
+   
+   my $timePerBit = (4 - 0.25 * $speed)/1000000;
+   my $timeUntilFirstBit = $timePerBit/2;
+   
+   for (my $i=0; $i<@$flux; $i++)
+   {
+      my $addBits = "";
+      my $tmeToFlux = $flux->[$i] / 5;
+      my $timeToFluxReduce = $tmeToFlux - $timeUntilFirstBit;
+      my $tmeToFluxAddZeroes =  $tmeToFlux;
+      
+      my $read1 = ($counterdelay <= 0) && ($pulseactive <= 0);
+      my $add0 = 1;
+      
+      if ($read1)
+      {
+         $add0 = $timeToFluxReduce > 0;
+         $addBits .= "1";
+         $counterdelay = $timeUntilFirstBit;
+         $bitwinremain = 0;
+         $bitwinremain = $tmeToFlux unless $add0;
+         $bitcounter = 0;
+         $tmeToFluxAddZeroes = $timeToFluxReduce;
+      }
+
+      $pulseactive = 2.5e-6;
+      if ($add0)
+      {
+      	my $zerobits = "";
+      	
+      	$tmeToFlux += $bitwinremain;
+      	my $zeroes = int $tmeToFluxAddZeroes / $timePerBit;
+      	
+      	$bitwinremain = $tmeToFluxAddZeroes - $zeroes * $timePerBit;
+      	$zerobits = "0" x $zeroes;
+      	
+      	$addBits .= $zerobits;
+      }
+      $pulseactive -= $tmeToFlux;
+      $counterdelay -= $tmeToFlux;
+
+## print "$tmeToFlux     $addBits\n";
+      $bits .= $addBits;
+   }
+
+   $bits;   
+}
+
+sub padbitstream
+{
+   my $bits = $_[0];
+   return $bits if length($bits) % 8 == 0;
+   
+   my @parts = split(/(?<=111111111)(1{10,})/, $bits);
+   my $check = join("", @parts);
+   die unless $bits eq $check;
+   
+   my $bitsToAdd = 8 - length($bits) % 8;
+   my $longestSync = 0;
+   for my $i (@parts)
+   {
+      next if $i !~ /^1+$/;
+      my $len = length $i;
+      $longestSync = $len if $longestSync < $len;
+   }
+   
+   my $longestSync2 = $longestSync;
+   
+   return $bits . ("0" x $bitsToAdd) if $longestSync == 0;
+
+   while ($bitsToAdd > 0)
+   {
+      ## print "$longestSync   $longestSync2\n";
+   	
+      for my $i (@parts)
+      {
+         next if $i !~ /^[12]+$/;
+         my $len = length $i;
+         ### print "--- $len\n";
+         next unless $len == $longestSync;
+         $i .= '2';
+         $bitsToAdd--;
+         $longestSync2 = $len+1 if $longestSync < $len+1;
+         last unless $bitsToAdd;
+      }
+      last unless $bitsToAdd;
+      $longestSync--;
+      $longestSync = $longestSync2 if $longestSync < 10;
+   }
+   
+   join "", @parts;
+}
+
+sub reverseFlux
+{
+   my $flux = $_[0];
+   my @flux = reverse @$flux;
+   \@flux;
+}
+
+
+
+
+
+
+#### 
+
+sub parseP64txt
+{
+   my ($p64txt,) = @_;
+   my %ret = ();
+   $ret{writeprotect} = 0;
+   $ret{sides} = 1;
+   $ret{tracks} = [];
+   my $tracks = $ret{tracks};
+   my $line;
+   my $flux;
+   
+   open (my $file, "<", \$p64txt) or die;
+   while ($line = <$file>)
+   {
+      chomp $line;
+      $line =~ s/^ +//;
+      if ($line eq "")
+      {
+      }
+      elsif ($line =~ /^;/)
+      {
+      }
+      elsif ($line =~  /^sides ([12])$/  )
+      {
+      	$ret{sides} = $1;
+      }
+      elsif ($line =~  /^write-protect ([01])$/  )
+      {
+      	$ret{writeprotect} = $1;
+      }
+      elsif ($line =~  /^track ([0-9]+(?:\.5)?)$/ )
+      {
+      	print "Parsing track $1\n";
+      	my $mytrack = {};
+      	$mytrack->{track} = $1;
+      	$mytrack->{flux} = [];
+      	$flux = $mytrack->{flux};
+      	
+      	push (@$tracks, $mytrack)
+      }
+      elsif ($line =~  /^flux ([0-9]+(?:\.[0-9]+)?)$/ )
+      {
+      	push (@$flux, $1);
+      }
+      else
+      {
+      	die "Invalid line $line\n";
+      }
+   }
+   
+   close ($file);
+   \%ret;
+}
+
+
+
+sub normalizeP64Flux
+{
+   my ($flux,) = @_;
+   my @ret = ();
+   
+   my $pos = $flux->[-1];
+   for my $v (@$flux)
+   {
+      my $delta = $v - $pos;
+      $delta += 3200000 if $delta < 0;
+      push (@ret, $delta / 3200000);
+      $pos = $v;
+   }
+ 
+   \@ret;
 }
