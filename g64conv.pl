@@ -173,6 +173,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.g((64)|(71))$/i)
             }
             else
             {
+               $trackNo += 42;
                $ret1 .= "track $trackNo\n";
                $ret1 .= "   speed $speed\n";
                $ret1 .= "   bits $bitstream\n";
@@ -342,7 +343,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.txt$/i)
      {
      	$trackNo += 128 if $side == 1;
         $ret0 .= "track $trackNo\n" if $side == 0;
-        $ret1 .= "track $trackNo\n" if $side == 0;
+        $ret1 .= "track $trackNo\n" if $side == 1;
         my $sum = 1;
         for my $v (@$Flux)
         {
@@ -355,7 +356,6 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.txt$/i)
      }
      else
      {
-     	$trackNo += 42 if $side == 1;
         my $speed = getSpeedZone1($Flux);
         my $bitstream = fluxtobitstream($Flux, $speed);
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
@@ -369,6 +369,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.txt$/i)
         }
         else
         {
+           $trackNo += 42;
            $ret1 .= "track $trackNo\n";
            $ret1 .= "   speed $speed\n";
            $ret1 .= "   bits $bitstream\n";
