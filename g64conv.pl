@@ -477,6 +477,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.txt$/i)
             }
             else
             {
+               $trackNo += 42;
                $ret1 .= "track $trackNo\n";
                $ret1 .= "   speed $speed\n";
                $ret1 .= "   bits $bitstream\n";
