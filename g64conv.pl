@@ -142,7 +142,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.g((64)|(71))$/i)
    {
        my $p64 = parseP64txt($txt);
        
-       my $ret0 .= "no-tracks 168\ntrack-size 7928\n";
+       my $ret0 .= "";
        my $ret1 = "";
        
        my $tracks = $p64->{tracks};
@@ -182,7 +182,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.g((64)|(71))$/i)
       }
      
        my $ret = "no-tracks 84\ntrack-size 7928\n" unless $ret1;
-       $ret .= "no-tracks 168\ntrack-size 7928\n" if $ret1;
+       $ret = "no-tracks 168\ntrack-size 7928\n" if $ret1;
        my $gxx = txttog64($ret.$ret0.$ret1, undef,  $dest);
        writefileRaw($gxx, $to);
    }
@@ -445,7 +445,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.txt$/i)
    {
        my $p64 = parseP64txt($txt);
        
-       my $ret0 .= "no-tracks 168\ntrack-size 7928\n";
+       my $ret0 .= "";
        my $ret1 = "";
        
        my $tracks = $p64->{tracks};
