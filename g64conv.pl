@@ -202,7 +202,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.g((64)|(71))$/i)
 elsif ($from =~ /\.g((64)|(71))$/i && $to =~ /\.d64$/i)
 {
    my $g64 = readfileRaw($from);
-   my $range = $pass;
+   my $range = $level;
    $range = "1..35" unless defined $range;
    my $ret = "";
    my $range2 = parseRange($range);
@@ -212,7 +212,7 @@ elsif ($from =~ /\.g((64)|(71))$/i && $to =~ /\.d64$/i)
 elsif ($from =~ /\.g((64)|(71))$/i && $to =~ /\.d71$/i)
 {
    my $g64 = readfileRaw($from);
-   my $range = $pass;
+   my $range = $level;
    $range = "1..35,43..77" unless defined $range;
    my $ret = "";
    my $range2 = parseRange($range);
