@@ -25,6 +25,8 @@ if (@ARGV < 2)
        "        g64conv.pl <from.g64> <to.reu> [reduceSync]\n".
        "        g64conv.pl <fromTemplate.txt> <to.g64> <from.d64>\n".
        "        g64conv.pl <fromTemplate.txt> <to.g64> <from.d71>\n".
+       "        g64conv.pl <from.g64> <to.d64>\n".
+       "        g64conv.pl <from.g64> <to.d71>\n".
 
        "        g64conv.pl <from??.0.raw.raw> <to.txt> <fluxMode> <rotation>\n".
        "        g64conv.pl <from??.0.raw.raw> <to.g64> <rotation>\n".
@@ -38,6 +40,8 @@ if (@ARGV < 2)
        "        g64conv.pl <from.d71> <to.g81>\n".
        "        g64conv.pl <fromTemplate.txt> <to.g71> <from.d64>\n".
        "        g64conv.pl <fromTemplate.txt> <to.g71> <from.d71>\n".
+       "        g64conv.pl <from.g71> <to.d64>\n".
+       "        g64conv.pl <from.g71> <to.d71>\n".
 
        "        g64conv.pl filter <from.txt> <to.txt> <range> <offset>\n".
 
@@ -198,13 +202,21 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.g((64)|(71))$/i)
 elsif ($from =~ /\.g((64)|(71))$/i && $to =~ /\.d64$/i)
 {
    my $g64 = readfileRaw($from);
-   my $d64 = g64tod64($g64);
+   my $range = $pass;
+   $range = "1..35" unless defined $range;
+   my $ret = "";
+   my $range2 = parseRange($range);
+   my $d64 = g64tod64($g64, $range2);
    writefileRaw($d64, $to);
 }
 elsif ($from =~ /\.g((64)|(71))$/i && $to =~ /\.d71$/i)
 {
    my $g64 = readfileRaw($from);
-   my $d71 = g64tod71($g64);
+   my $range = $pass;
+   $range = "1..35,43..77" unless defined $range;
+   my $ret = "";
+   my $range2 = parseRange($range);
+   my $d71 = g64tod71($g64, $range2);
    writefileRaw($d71, $to);
 }
 elsif ($from =~ /\.nb2$/i && $to =~ /\.txt$/i)
@@ -520,7 +532,7 @@ elsif ($from eq "filter" &&  $to =~ /\.txt$/i)
    my $ret = "";
    my $range2 = parseRange($range);
    
-   my $offset = $ARGV[5];
+   my $offset = $ARGV[4];
    $offset = "0" unless defined $offset;
    
    open (my $file, "<", $to);
@@ -1903,7 +1915,7 @@ sub parseTrack2
 
 sub g64tod64
 {
-   my ($g64, $level) = @_;
+   my ($g64, $range) = @_;
    my $ret = ("\xDE\xAD\xBE\xEF" x 64) x 683;
    my $error = "\x02" x 683;
    
@@ -1923,9 +1935,10 @@ sub g64tod64
 		   19, 19, 19, 19, 18,  18, 18, 18, 18, 18,
 		   17, 17, 17, 17, 17,  17, 17, 17, 17, 17);
 
-   for (my $i=1; $i<=2*35; $i+=2)
+   for (my $i=1; $i<$notracks; $i++)   
    {
       my $track = ($i+1)/2;
+      next unless defined $range->{$track};
       my $trackTablePosition = 8+4*$i;
       my $trackPosition = unpack("L", substr($g64, $trackTablePosition, 4));
       next unless $trackPosition;
@@ -1977,7 +1990,7 @@ sub g64tod64
 
 sub g64tod71
 {
-   my ($g64, $level) = @_;
+   my ($g64, $range) = @_;
    my $ret = ("\xDE\xAD\xBE\xEF" x 64) x 1366;
    my $error = "\x02" x 1366;
    
@@ -2014,6 +2027,7 @@ sub g64tod71
    for (my $i=1; $i<=$notracks; $i+=2)
    {
       my $track = ($i+1)/2;
+      next unless defined $range->{$track};
       my $trackTablePosition = 8+4*$i;
       my $trackPosition = unpack("L", substr($g64, $trackTablePosition, 4));
       next unless $trackPosition;
