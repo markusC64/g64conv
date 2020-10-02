@@ -39,7 +39,7 @@ if (@ARGV < 2)
        "        g64conv.pl <fromTemplate.txt> <to.g71> <from.d64>\n".
        "        g64conv.pl <fromTemplate.txt> <to.g71> <from.d71>\n".
 
-       "        g64conv.pl filter <from.txt> <to.txt> <halftracks> <range> <offset>\n".
+       "        g64conv.pl filter <from.txt> <to.txt> <range> <offset>\n".
 
        "mode may be 0 (hex only) or 1 (gcr parsed, default) or\n".
        "        2 (gcr parsed with warp25 heuristic).\n".
@@ -513,24 +513,12 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.txt$/i)
 elsif ($from eq "filter" &&  $to =~ /\.txt$/i)
 {
    my $print = 1;
-   my $From = 1;
-   my $To = 86;
 
-   $pass = "0" unless defined $pass;
-   my $range = $ARGV[4];
-   $range = "1..86" unless defined $range;
+   my $range = $pass;
+   $range = "1..35,43..77,129..163" unless defined $range;
    my $ret = "";
+   my $range2 = parseRange($range);
    
-   if ($range =~ /^([0-9\.]+)\.\.([0-9\.]+)$/)
-   {
-   	$From = $1;
-   	$To = $2;
-   }
-   elsif ($range =~ /^([0-9\.]+)$/ )
-   {
-   	$From = $1;
-   	$To = $1;
-   }
    my $offset = $ARGV[5];
    $offset = "0" unless defined $offset;
    
@@ -543,8 +531,7 @@ elsif ($from eq "filter" &&  $to =~ /\.txt$/i)
       {
       	 my $tr = $1;
          $print = 1;
-         $print = 0 if $tr =~ /\.5$/ && !$pass;
-         $print = 0 unless $tr >= $From && $tr <= $To;
+         $print = 0 unless exists $range2->{$tr};
          $ret .= "track " . ($tr+$offset) . "\n"if $print;
          next;
       }
@@ -2849,4 +2836,60 @@ sub normalizeP64Flux
    }
  
    \@ret;
+}
+
+sub parseRange
+{
+   my $range = $_[0];
+   	
+   my @ret;
+   
+   my @range = split(",", $range);
+   
+   for my $range (@range)
+   {
+      if ( $range =~ /^([0-9]+)$/)
+      {
+         push (@ret, $1-0);
+      }
+      elsif ( $range =~ /^([0-9]+(?:\.5)?)\.\.([0-9]+(?:\.5)?)(?:\/([0-9]+(?:\.5)))?$/)
+      {
+      	my $a = $1-0;
+      	my $b = $2-0;
+      	my $c = $3;
+      	unless (defined $c)
+      	{
+      	   my $d = $b-$a;
+      	   $d -= int $d;
+      	   if (abs($d) < 0.1)
+      	   {
+      	      $c=1;
+      	   }
+      	   else
+      	   {
+      	      $c=0.5;
+      	   }
+      	}
+      	$c-=0;
+      	
+      	for (my $i=$a; $i<=$b; $i+=$c)
+      	{
+           push (@ret, $i);
+        }
+      }
+      elsif ( $range =~ /^([0-9]+\.5)$/)
+      {
+         push (@ret, $1-0);
+      }
+      elsif ( $range =~ /^([0-9]+)\.\.([0-9]+)$/)
+      {
+      	my $a = $1-0;
+      	my $b = $2-0;
+         push (@ret, $a..$b);
+      }
+   }
+   
+   my %ret = map { $_ => 1 } @ret;
+   
+  \%ret;
 }
