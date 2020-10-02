@@ -22,28 +22,28 @@ if (@ARGV < 2)
        "        g64conv.pl <from.d64> <to.g64>\n".
        "        g64conv.pl <from.d71> <to.g64>\n".
        "        g64conv.pl <from.reu> <to.g64>\n".
-       "        g64conv.pl <from.g64> <to.reu> [reduceSync]\n".
+       "        g64conv.pl <from.g64> <to.reu> [<reduceSync>]\n".
        "        g64conv.pl <fromTemplate.txt> <to.g64> <from.d64>\n".
        "        g64conv.pl <fromTemplate.txt> <to.g64> <from.d71>\n".
-       "        g64conv.pl <from.g64> <to.d64>\n".
-       "        g64conv.pl <from.g64> <to.d71>\n".
+       "        g64conv.pl <from.g64> <to.d64> [<range>]\n".
+       "        g64conv.pl <from.g64> <to.d71> [<range>]\n".
 
-       "        g64conv.pl <from??.0.raw.raw> <to.txt> <fluxMode> <rotation>\n".
-       "        g64conv.pl <from??.0.raw.raw> <to.g64> <rotation>\n".
-       "        g64conv.pl <from.txt> <to.txt>\n <mode|fluxMode>\n".
+       "        g64conv.pl <from??.0.raw.raw> <to.txt> [<fluxMode>] [<rotation>]\n".
+       "        g64conv.pl <from??.0.raw.raw> <to.g64> [<rotation>]>\n".
+       "        g64conv.pl <from.txt> <to.txt>\n [<mode|fluxMode>]\n".
 
-       "        g64conv.pl <from.nb2> <to.txt> [mode]\n".
+       "        g64conv.pl <from.nb2> <to.txt> [<mode>]\n".
 
-       "        g64conv.pl <from.g71> <to.txt> [mode]\n".
+       "        g64conv.pl <from.g71> <to.txt> [<mode>]\n".
        "        g64conv.pl <from.txt> <to.g71>\n".
        "        g64conv.pl <from.d64> <to.g71>\n".
        "        g64conv.pl <from.d71> <to.g81>\n".
        "        g64conv.pl <fromTemplate.txt> <to.g71> <from.d64>\n".
        "        g64conv.pl <fromTemplate.txt> <to.g71> <from.d71>\n".
-       "        g64conv.pl <from.g71> <to.d64>\n".
-       "        g64conv.pl <from.g71> <to.d71>\n".
+       "        g64conv.pl <from.g71> <to.d64> [<range>]\n".
+       "        g64conv.pl <from.g71> <to.d71> [<range>]\n".
 
-       "        g64conv.pl filter <from.txt> <to.txt> <range> <offset>\n".
+       "        g64conv.pl filter <from.txt> <to.txt> [<range>] [<offset>]\n".
 
        "mode may be 0 (hex only) or 1 (gcr parsed, default) or\n".
        "        2 (gcr parsed with warp25 heuristic).\n".
