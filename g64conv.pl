@@ -160,7 +160,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.g((64)|(71))$/i)
          
         my $Flux = normalizeP64Flux ($trackData->{flux});
 
-         my $speed = getSpeedZone1($Flux);
+         my $speed = getSpeedZone1($Flux, $trackNo);
          my $bitstream = fluxtobitstream($Flux, $speed);
          $bitstream = padbitstream($bitstream);
         
@@ -253,7 +253,7 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.txt$/i)
      }
      else
      {
-        my $speed = getSpeedZone1($Flux);
+        my $speed = getSpeedZone1($Flux, $trackNo);
         my $bitstream = fluxtobitstream($Flux, $speed);
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
@@ -295,7 +295,7 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.g64$/i)
      my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
      $Flux = reverseFlux($Flux) if $side == 1;
 
-     my $speed = getSpeedZone1($Flux);
+     my $speed = getSpeedZone1($Flux, $trackNo);
      my $bitstream = fluxtobitstream($Flux, $speed);
      $bitstream = padbitstream($bitstream);
     
@@ -356,7 +356,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.txt$/i)
      }
      else
      {
-        my $speed = getSpeedZone1($Flux);
+        my $speed = getSpeedZone1($Flux, $trackNo);
         my $bitstream = fluxtobitstream($Flux, $speed);
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
@@ -414,7 +414,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.g((64)|(71))$/i)
      my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
      $Flux = reverseFlux($Flux) if $side == 1;
 
-     my $speed = getSpeedZone1($Flux);
+     my $speed = getSpeedZone1($Flux, $trackNo);
      my $bitstream = fluxtobitstream($Flux, $speed);
      $bitstream = padbitstream($bitstream);
     
@@ -427,6 +427,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.g((64)|(71))$/i)
         }
         else
         {
+           $trackNo += 42;
            $ret1 .= "track $trackNo\n";
            $ret1 .= "   speed $speed\n";
            $ret1 .= "   bits $bitstream\n";
@@ -464,7 +465,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.txt$/i)
          
         my $Flux = normalizeP64Flux ($trackData->{flux});
 
-         my $speed = getSpeedZone1($Flux);
+         my $speed = getSpeedZone1($Flux, $trackNo);
          my $bitstream = fluxtobitstream($Flux, $speed);
          $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
@@ -2593,6 +2594,12 @@ sub kryofluxNormalize
       push (@ret, $val);
    }
    \@ret;
+}
+
+sub getSpeedZone
+{
+   my ($flux, $track) = @_;
+   getSpeedZone1($flux);
 }
 
 
