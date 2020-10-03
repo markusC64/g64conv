@@ -17,8 +17,8 @@ use strict;
 
 if (@ARGV < 2)
 {
-   die "Syntax: g64conv.pl <from.g64> <to.txt> [mode]\n".
-       "        g64conv.pl <from.txt> <to.g64>\n".
+   die "Syntax: g64conv.pl <from.g64> <to.txt> [<mode>]\n".
+       "        g64conv.pl <from.txt> <to.g64> [<speedRotationSpec>]\n".
        "        g64conv.pl <from.d64> <to.g64>\n".
        "        g64conv.pl <from.d71> <to.g64>\n".
        "        g64conv.pl <from.reu> <to.g64>\n".
@@ -28,14 +28,14 @@ if (@ARGV < 2)
        "        g64conv.pl <from.g64> <to.d64> [<range>]\n".
        "        g64conv.pl <from.g64> <to.d71> [<range>]\n".
 
-       "        g64conv.pl <from??.0.raw.raw> <to.txt> [<fluxMode>] [<rotation>]\n".
-       "        g64conv.pl <from??.0.raw.raw> <to.g64> [<rotation>]>\n".
-       "        g64conv.pl <from.txt> <to.txt>\n [<mode|fluxMode>]\n".
+       "        g64conv.pl <from??.0.raw.raw> <to.txt> [<fluxMode>] [<speedRotationSpec>]\n".
+       "        g64conv.pl <from??.0.raw.raw> <to.g64> [<speedRotationSpec>]\n".
+       "        g64conv.pl <from.txt> <to.txt>\n [<mode|fluxMode>] [<speedRotationSpec>]\n".
 
        "        g64conv.pl <from.nb2> <to.txt> [<mode>]\n".
 
        "        g64conv.pl <from.g71> <to.txt> [<mode>]\n".
-       "        g64conv.pl <from.txt> <to.g71>\n".
+       "        g64conv.pl <from.txt> <to.g71> [<speedRotationSpec>]\n".
        "        g64conv.pl <from.d64> <to.g71>\n".
        "        g64conv.pl <from.d71> <to.g81>\n".
        "        g64conv.pl <fromTemplate.txt> <to.g71> <from.d64>\n".
@@ -144,6 +144,9 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.g((64)|(71))$/i)
    my $txt = readfile($from);
    if ($txt =~ /^\s+flux/mi)
    {
+       $level = "0" unless defined $level;
+       $level = parseRotationSpeedParameter($level);
+       
        my $p64 = parseP64txt($txt);
        
        my $ret0 .= "";
@@ -164,7 +167,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.g((64)|(71))$/i)
          
         my $Flux = normalizeP64Flux ($trackData->{flux});
 
-         my $speed = getSpeedZone1($Flux, $trackNo);
+         my $speed = getSpeedZone($Flux, $trackNo+128*$side, $level);
          my $bitstream = fluxtobitstream($Flux, $speed);
          $bitstream = padbitstream($bitstream);
         
@@ -229,6 +232,7 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.txt$/i)
 {
    $level = 1 unless defined $level;
    $pass = 0 unless defined $pass;
+   $pass = parseRotationSpeedParameter($pass);
 
   my @src = sort glob $from;
   
@@ -247,7 +251,7 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.txt$/i)
 
      my $track = readfileRaw($filename);
      my $fluxRaw = parseKryofluxRawFile($track);
-     my $fluxMetadata = extractRotation($fluxRaw, $pass);
+     my $fluxMetadata = extractRotation($fluxRaw, $pass, $trackNo+128*$side);
      my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
      $Flux = reverseFlux($Flux) if $side == 1;
 
@@ -265,7 +269,7 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.txt$/i)
      }
      else
      {
-        my $speed = getSpeedZone1($Flux, $trackNo);
+        my $speed = getSpeedZone($Flux, $trackNo, $pass);
         my $bitstream = fluxtobitstream($Flux, $speed);
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
@@ -286,6 +290,7 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.txt$/i)
 elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.g64$/i)
 {
    $level = "0" unless defined $level;
+   $level = parseRotationSpeedParameter($level);
 
   my @src = sort glob $from;
   
@@ -303,11 +308,11 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.g64$/i)
 
      my $track = readfileRaw($filename);
      my $fluxRaw = parseKryofluxRawFile($track);
-     my $fluxMetadata = extractRotation($fluxRaw, $level);
+     my $fluxMetadata = extractRotation($fluxRaw, $level, $trackNo+128*$side);
      my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
      $Flux = reverseFlux($Flux) if $side == 1;
 
-     my $speed = getSpeedZone1($Flux, $trackNo);
+     my $speed = getSpeedZone($Flux, $trackNo, $level);
      my $bitstream = fluxtobitstream($Flux, $speed);
      $bitstream = padbitstream($bitstream);
     
@@ -328,6 +333,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.txt$/i)
 {
    $level = 1 unless defined $level;
    $pass = 0 unless defined $pass;
+   $pass = parseRotationSpeedParameter($pass);
 
   my @src = sort glob $from;
   
@@ -348,7 +354,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.txt$/i)
 
      my $track = readfileRaw($filename);
      my $fluxRaw = parseKryofluxRawFile($track);
-     my $fluxMetadata = extractRotation($fluxRaw, $pass);
+     my $fluxMetadata = extractRotation($fluxRaw, $pass), $trackNo+128*$side;
      my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
 
      if ($level eq "p64")
@@ -368,7 +374,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.txt$/i)
      }
      else
      {
-        my $speed = getSpeedZone1($Flux, $trackNo);
+        my $speed = getSpeedZone($Flux, $trackNo+128*$side, $pass);
         my $bitstream = fluxtobitstream($Flux, $speed);
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
@@ -404,6 +410,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.g((64)|(71))$/i)
    $dest = "1571" if $to =~ /\.g71$/i;
 	
    $level = "0" unless defined $level;
+   $level = parseRotationSpeedParameter($level);
 
   my @src = sort glob $from;
   
@@ -422,11 +429,11 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.g((64)|(71))$/i)
 
      my $track = readfileRaw($filename);
      my $fluxRaw = parseKryofluxRawFile($track);
-     my $fluxMetadata = extractRotation($fluxRaw, $level);
+     my $fluxMetadata = extractRotation($fluxRaw, $level, $trackNo+128*$side);
      my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
      $Flux = reverseFlux($Flux) if $side == 1;
 
-     my $speed = getSpeedZone1($Flux, $trackNo);
+     my $speed = getSpeedZone($Flux, $trackNo+128*$side, $level);
      my $bitstream = fluxtobitstream($Flux, $speed);
      $bitstream = padbitstream($bitstream);
     
@@ -457,6 +464,9 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.txt$/i)
    my $txt = readfile($from);
    if ($txt =~ /^\s+flux/mi)
    {
+       $pass = "0" unless defined $pass;
+       $pass = parseRotationSpeedParameter($pass);
+       
        my $p64 = parseP64txt($txt);
        
        my $ret0 .= "";
@@ -477,7 +487,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.txt$/i)
          
         my $Flux = normalizeP64Flux ($trackData->{flux});
 
-         my $speed = getSpeedZone1($Flux, $trackNo);
+         my $speed = getSpeedZone($Flux, $trackNo+128*$side, $pass);
          my $bitstream = fluxtobitstream($Flux, $speed);
          $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
@@ -2337,7 +2347,7 @@ sub nb2totxt
    {
       my $track = ($i+1)/2;
       last if substr( $nb2, 256+8192*32*($track-1), 1) eq "";
-      print STDERR "DEBUG: track=$track\n";
+      print STDERR "Processing track=$track\n";
 
       for (my $speed = 0; $speed < 4; $speed++)
       {
@@ -2517,15 +2527,42 @@ sub parseKryofluxRawFile
 
 sub extractRotation
 {
-   my ($content, $rotation) = @_;
+   my ($content, $spec, $track) = @_;
+   my $rotation = 0;
 
+   if (exists $spec->{rotation}{default}) { $rotation = $spec->{rotation}{default}; }
+   if (exists $spec->{rotation}{$track}) { $rotation = $spec->{rotation}{$track}; }
+   
    my $refIndicies = $content->{indicies};
    my $refFlux = $content->{flux};
-   my $noRotations = scalar @$refIndicies;
-   my $rotNo = -1;
    
    my %ret = ();
-   
+
+   if (ref $rotation)
+   {
+      my $prevIndex1 = $rotation->[0];
+      my $prevIndex2 = $rotation->[1];
+      
+      print "   Using rotation $prevIndex1..$prevIndex2 for track $track\n";
+   	
+      my $fluxSum = $refFlux->[$prevIndex2-1]{FluxSum} - $refFlux->[$prevIndex1-1]{FluxSum};
+      
+
+      $ret{index1} = $prevIndex1;
+      $ret{index2} = $prevIndex2;
+      
+      $ret{adjustFlux1} = 0;
+      $ret{adjustFlux2} = 0;
+      
+      $ret{fluxSum} = $fluxSum;
+      $ret{tracktime} = $fluxSum / $content->{sck};
+      $ret{rpm} = 60 / $fluxSum * $content->{sck};
+      return \%ret;
+   }
+
+   my $noRotations = scalar @$refIndicies;
+   my $rotNo = -1;
+
    for (my $i=0; $i<$noRotations-1; $i++)
    {
       my $streamPosInd = $refIndicies->[$i]{streamPos};
@@ -2572,6 +2609,7 @@ sub extractRotation
 
       my $fluxSum = $refFlux->[$prevIndex2-1]{FluxSum} - $refFlux->[$prevIndex1-1]{FluxSum};
       
+      print "   Using rotation $rotNo: $prevIndex1..$prevIndex2 for track $track\n";
 
       $ret{index1} = $prevIndex1;
       $ret{index2} = $prevIndex2;
@@ -2612,7 +2650,21 @@ sub kryofluxNormalize
 
 sub getSpeedZone
 {
-   my ($flux, $track) = @_;
+   my ($flux, $track, $spec) = @_;
+   my $ret = doGetSpeedZone($flux, $track, $spec);
+   
+   print "   Using speed zone $ret for track $track\n";
+   
+   $ret;
+}
+
+sub doGetSpeedZone
+{
+   my ($flux, $track, $spec) = @_;
+   
+   if (exists $spec->{speed}{$track}) { return $spec->{speed}{$track}; }
+   if (exists $spec->{speed}{default}) { return $spec->{speed}{default}; }
+   
    getSpeedZone1($flux);
 }
 
@@ -2911,6 +2963,75 @@ sub parseRange
    }
    
    my %ret = map { $_ => 1 } @ret;
+   
+  \%ret;
+}
+
+sub parseRotationSpeedParameter
+{
+   my $range = $_[0];
+   	
+   my %ret;
+   $ret{rotation}{default} = 0;
+   
+   my @range = split(",", $range);
+   
+   for my $range (@range)
+   {
+      if ( $range =~ /^r?([0-9]+)$/i)
+      {
+      	$ret{rotation}{default} = $1-0;
+      }
+      if ( $range =~ /^s?([0-9]+)$/i)
+      {
+      	$ret{speed}{default} = $1-0;
+      }
+      elsif ( $range =~ /^([0-9]+(?:\.5)?)(?:\.\.([0-9]+(?:\.5)?))?(?:\/([0-9]+(?:\.5)))?=([rs])([0-9]+)$/i)
+      {
+      	# Parameter: Start, End, Incr, "rs", val
+      	my ($start, $end, $incr, $rs, $val) = ($1, $2, $3, $4, $5);
+      	
+      	$incr = 1 unless defined $end;
+      	$end = $start unless defined $end;
+      	
+      	unless (defined $incr)
+      	{
+      	   my $d = $end-$start;
+      	   $d -= int $d;
+      	   if (abs($d) < 0.1)
+      	   {
+      	      $incr=1;
+      	   }
+      	   else
+      	   {
+      	      $incr=0.5;
+      	   }
+      	}
+      	$incr-=0;
+      	
+      	for (my $i=$start; $i<=$end; $i+=$incr)
+      	{
+           if ($rs eq "r")
+           {
+           	$ret{rotation}{$i} = $val unless exists $ret{rotation}{$i};
+           }
+           else
+           {
+           	$ret{speed}{$i} = $val unless exists $ret{speed}{$i};
+           }
+        }
+      }
+      elsif ( $range =~ /^([0-9]+(?:\.5)?)=r([0-9]+)\.\.([0-9]+)$/i)
+      {
+      	my ($track, $start, $end) = ($1, $2, $3);
+      	$ret{rotation}{$track} = [$start, $end];
+      }
+      else
+      {
+      	print "UNKNOWN $range\n";
+      	die;
+      }
+   }
    
   \%ret;
 }
