@@ -2982,7 +2982,7 @@ sub parseRotationSpeedParameter
       {
       	$ret{rotation}{default} = $1-0;
       }
-      if ( $range =~ /^s?([0-9]+)$/i)
+      elsif ( $range =~ /^s([0-9]+)$/i)
       {
       	$ret{speed}{default} = $1-0;
       }
