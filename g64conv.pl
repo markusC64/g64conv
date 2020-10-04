@@ -2586,7 +2586,7 @@ sub extractRotation
       for my $offset (-10..10)
       {
       	my $delta = abs ($refFlux->[$prevIndex2+$offset]{FluxSum} - $refFlux->[$prevIndex2]{FluxSum});
-      	next if $delta > 300;
+      	next if $delta > $spec->{deltaMax};
       	
       	my $err = 0;
       	
@@ -2665,7 +2665,11 @@ sub doGetSpeedZone
    if (exists $spec->{speed}{$track}) { return $spec->{speed}{$track}; }
    if (exists $spec->{speed}{default}) { return $spec->{speed}{default}; }
    
-   getSpeedZone1($flux);
+   my $speed = getSpeedZone1($flux);
+   return undef unless defined $speed;
+   return $speed if $speed >= 0;
+   print "   Warning: Speed zone not sure\n";
+   -$speed-1;
 }
 
 
@@ -2717,8 +2721,9 @@ sub getSpeedZone1
    $delta = $delta2 if $speed == 2;
    $delta = $delta3 if $speed == 3;
    
-   return undef if $delta > 0.3125e-6;
-   $speed;
+   return $speed if $delta <= 0.3125e-6;
+   return undef if $delta <= 0.41e-6;
+   -$speed-1;
 }
 
 sub fluxtobitstream
@@ -2970,9 +2975,9 @@ sub parseRange
 sub parseRotationSpeedParameter
 {
    my $range = $_[0];
-   	
    my %ret;
    $ret{rotation}{default} = 0;
+   $ret{deltaMax} = 300;
    
    my @range = split(",", $range);
    
@@ -2981,6 +2986,10 @@ sub parseRotationSpeedParameter
       if ( $range =~ /^r?([0-9]+)$/i)
       {
       	$ret{rotation}{default} = $1-0;
+      }
+      elsif ( $range =~ /^d([0-9]+)$/i)
+      {
+      	$ret{deltaMax} = $1-0;
       }
       elsif ( $range =~ /^s([0-9]+)$/i)
       {
