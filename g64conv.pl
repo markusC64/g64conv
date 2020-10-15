@@ -52,7 +52,28 @@ if (@ARGV < 2)
        "        6 (gcr parsed, max 16 bytes per line, with raw bytes comment).\n".
        "        or p64 for p64 compatible flux position list\n".
        "fluxMode can be any value of mode and raw or rawUnpadded.\n".
-       "reduceSync may be 0 (disabled) or 1 (enabled, default).\n";
+       "reduceSync may be 0 (disabled) or 1 (enabled, default).\n".
+       
+       "<range> might be a single number like 5, an interval like 1..12 or\n".
+       "        an interval with increment like 1..12/0.5\n".
+       "        or a comma separated list of the ones before.\n".
+       
+       "<speedRotationSpec> might be (just examples):\n".
+       "          2           default rotation to use\n".
+       "          r2          default rotation to use\n".
+       "          1..5=r1     rotation to use for given tracks\n".
+       "          1..5/0.5=r1 rotation to use for given tracks\n".
+       
+       "          s3          default speed, disables auto detection\n".
+       "          1..5=s1     speed to use for given tracks\n".
+       "          1..5/0.5=s1 speed to use for given tracks\n".
+       "          sstd        short for standard 1571 speed zones\n".
+       
+       "          d500        sets maximum delta in rotation detection\n".
+       "          v250        sets flux range to verify rotation\n".
+       "          ad1 or ad2  choose which algorithm to use for decoding\n".
+       "        or a comma separated list of the ones before.\n"
+       ;
 }
 
 
@@ -168,7 +189,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.g((64)|(71))$/i)
         my $Flux = normalizeP64Flux ($trackData->{flux});
 
          my $speed = getSpeedZone($Flux, $trackNo+128*$side, $level);
-         my $bitstream = fluxtobitstream($Flux, $speed);
+         my $bitstream = fluxtobitstream($Flux, $speed, $level);
          $bitstream = padbitstream($bitstream);
         
             if ($side == 0)
@@ -251,7 +272,7 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.txt$/i)
 
      my $track = readfileRaw($filename);
      my $fluxRaw = parseKryofluxRawFile($track);
-     my $fluxMetadata = extractRotation($fluxRaw, $pass, $trackNo+128*$side);
+     my $fluxMetadata = extractRotation($fluxRaw, $pass, $trackNo);
      my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
      $Flux = reverseFlux($Flux) if $side == 1;
 
@@ -270,7 +291,7 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.txt$/i)
      else
      {
         my $speed = getSpeedZone($Flux, $trackNo, $pass);
-        my $bitstream = fluxtobitstream($Flux, $speed);
+        my $bitstream = fluxtobitstream($Flux, $speed, $pass);
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
         $ret .= "track $trackNo\n";
@@ -308,12 +329,12 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.g64$/i)
 
      my $track = readfileRaw($filename);
      my $fluxRaw = parseKryofluxRawFile($track);
-     my $fluxMetadata = extractRotation($fluxRaw, $level, $trackNo+128*$side);
+     my $fluxMetadata = extractRotation($fluxRaw, $level, $trackNo);
      my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
      $Flux = reverseFlux($Flux) if $side == 1;
 
      my $speed = getSpeedZone($Flux, $trackNo, $level);
-     my $bitstream = fluxtobitstream($Flux, $speed);
+     my $bitstream = fluxtobitstream($Flux, $speed, $level);
      $bitstream = padbitstream($bitstream);
     
      $ret .= "track $trackNo\n";
@@ -354,7 +375,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.txt$/i)
 
      my $track = readfileRaw($filename);
      my $fluxRaw = parseKryofluxRawFile($track);
-     my $fluxMetadata = extractRotation($fluxRaw, $pass), $trackNo+128*$side;
+     my $fluxMetadata = extractRotation($fluxRaw, $pass, $trackNo+128*$side);
      my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
 
      if ($level eq "p64")
@@ -375,7 +396,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.txt$/i)
      else
      {
         my $speed = getSpeedZone($Flux, $trackNo+128*$side, $pass);
-        my $bitstream = fluxtobitstream($Flux, $speed);
+        my $bitstream = fluxtobitstream($Flux, $speed, $pass);
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
         if ($side == 0)
@@ -434,7 +455,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.g((64)|(71))$/i)
      $Flux = reverseFlux($Flux) if $side == 1;
 
      my $speed = getSpeedZone($Flux, $trackNo+128*$side, $level);
-     my $bitstream = fluxtobitstream($Flux, $speed);
+     my $bitstream = fluxtobitstream($Flux, $speed, $level);
      $bitstream = padbitstream($bitstream);
     
         if ($side == 0)
@@ -488,7 +509,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.txt$/i)
         my $Flux = normalizeP64Flux ($trackData->{flux});
 
          my $speed = getSpeedZone($Flux, $trackNo+128*$side, $pass);
-         my $bitstream = fluxtobitstream($Flux, $speed);
+         my $bitstream = fluxtobitstream($Flux, $speed, $pass);
          $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
             if ($side == 0)
@@ -2529,9 +2550,11 @@ sub extractRotation
 {
    my ($content, $spec, $track) = @_;
    my $rotation = 0;
+   my $verifyRange = 25;
 
    if (exists $spec->{rotation}{default}) { $rotation = $spec->{rotation}{default}; }
    if (exists $spec->{rotation}{$track}) { $rotation = $spec->{rotation}{$track}; }
+   if (exists $spec->{verifyRange}) { $verifyRange = $spec->{verifyRange}; }
    
    my $refIndicies = $content->{indicies};
    my $refFlux = $content->{flux};
@@ -2590,7 +2613,7 @@ sub extractRotation
       	
       	my $err = 0;
       	
-      	for my $i (-25..25)
+      	for my $i (-$verifyRange..$verifyRange)
       	{
            my $val1 = $refFlux->[$prevIndex1 + $i]{Value};
            my $val2 = $refFlux->[$prevIndex2 + $i + $offset]{Value};
@@ -2726,7 +2749,7 @@ sub getSpeedZone1
    -$speed-1;
 }
 
-sub fluxtobitstream
+sub fluxtobitstreamV1
 {
    my ($flux, $speed) = @_;
    my $bits = "";
@@ -2977,13 +3000,23 @@ sub parseRotationSpeedParameter
    my $range = $_[0];
    my %ret;
    $ret{rotation}{default} = 0;
-   $ret{deltaMax} = 300;
+   $ret{deltaMax} = 500;
+   $ret{decoderalgorithm} = 2;
+   $ret{verifyRange} = 250;
    
    my @range = split(",", $range);
    
    for my $range (@range)
    {
-      if ( $range =~ /^r?([0-9]+)$/i)
+      if ( $range =~ /^ad([1-2])$/i)
+      {
+      	$ret{decoderalgorithm} = $1;
+      }
+      elsif ( $range =~ /^v([0-9]+)$/i)
+      {
+      	$ret{verifyRange} = $1;
+      }
+      elsif ( $range =~ /^r?([0-9]+)$/i)
       {
       	$ret{rotation}{default} = $1-0;
       }
@@ -2994,6 +3027,22 @@ sub parseRotationSpeedParameter
       elsif ( $range =~ /^s([0-9]+)$/i)
       {
       	$ret{speed}{default} = $1-0;
+      }
+      elsif ( $range eq "sstd")
+      {
+         # 1..17=s3,18..24=s2,25..30=s1,31..35=s0,129..146=s3,147..152=s2,153..158=s1,159..163=s0
+         
+         my %tmp = ();
+         
+         $tmp{$_} = 3 for (1..17,129..146);
+         $tmp{$_} = 2 for (18..24,147..152);
+         $tmp{$_} = 1 for (25..30,153..158);
+         $tmp{$_} = 0 for (31..35,159..163);
+         
+         for my $i (keys %tmp)
+         {
+            $ret{speed}{$i} = $tmp{$i} unless exists $ret{rotation}{$i};
+         }
       }
       elsif ( $range =~ /^([0-9]+(?:\.5)?)(?:\.\.([0-9]+(?:\.5)?))?(?:\/([0-9]+(?:\.5)))?=([rs])([0-9]+)$/i)
       {
@@ -3041,6 +3090,76 @@ sub parseRotationSpeedParameter
       	die;
       }
    }
-   
+
   \%ret;
+}
+
+sub fluxtobitstreamV2
+{
+   my ($flux, $speed) = @_;
+   my $bits = "";
+   
+   my $pulseactive = 0;
+   my $clock = 0;
+   my $counter = 0;
+   my $tcarry = 0;
+   
+   my $timePerBit = (4 - 0.25 * $speed)/1000000;
+   
+   for (my $i=-@$flux; $i<@$flux; $i++)
+   {
+      $bits = "" if $i == 0;
+      my $tmeToFlux = $flux->[$i] / 5 + $tcarry;
+
+      my $delay = 0;
+      
+      $pulseactive = !$pulseactive;
+      
+      do
+      {
+         if ($delay == 40 && $pulseactive == 1)
+         {
+            $clock = $speed;
+            $counter = 0;
+            $pulseactive = 0;
+         }
+         
+         if ($clock == 16)
+         {
+            $clock = $speed;
+            $counter++;
+            
+            if (($counter & 3) == 2)
+            {
+                if ($counter == 2)
+                {
+                   $bits .= "1";
+                }
+                else
+                {
+                   $bits .= "0";
+                }
+            }
+         }
+         $delay ++;
+         $clock ++;
+      } while (6.25e-8 * $delay < $tmeToFlux);
+      
+      $tcarry = $tmeToFlux - ($delay - 1) * 6.25e-8;
+   }
+
+   $bits;   
+}
+
+sub fluxtobitstream
+{
+   my ($flux, $speed, $param) = @_;
+   
+   my $ret;
+   my $alg = $param->{decoderalgorithm};
+
+   $ret = fluxtobitstreamV2($flux, $speed) if $alg == 2;
+   $ret = fluxtobitstreamV1($flux, $speed) if $alg == 1;
+   
+   $ret;
 }
