@@ -25,14 +25,14 @@ if (@ARGV < 2)
        "        g64conv.pl <from.g64> <to.reu> [<reduceSync>]\n".
        "        g64conv.pl <fromTemplate.txt> <to.g64> <from.d64>\n".
        "        g64conv.pl <fromTemplate.txt> <to.g64> <from.d71>\n".
-       "        g64conv.pl <from.g64> <to.d64> [<range>]\n".
+       "        g64conv.pl <from.g64> <to.d64> [<range>] [<noBlocks,683,768,802>]\n".
        "        g64conv.pl <from.g64> <to.d71> [<range>]\n".
 
-       "        g64conv.pl <from??.0.raw.raw> <to.txt> [<fluxMode>] [<speedRotationSpec>]\n".
-       "        g64conv.pl <from??.0.raw.raw> <to.g64> [<speedRotationSpec>]\n".
+       "        g64conv.pl <from??.0.raw> <to.txt> [<fluxMode>] [<speedRotationSpec>]\n".
+       "        g64conv.pl <from??.0.raw> <to.g64> [<speedRotationSpec>]\n".
        "        g64conv.pl <from.txt> <to.txt>\n [<mode|fluxMode>] [<speedRotationSpec>]\n".
 
-       "        g64conv.pl <from.nb2> <to.txt> [<mode>]\n".
+       "        g64conv.pl <from.nb2> <to.txt> [<mode>] [<rotation>]\n".
 
        "        g64conv.pl <from.g71> <to.txt> [<mode>]\n".
        "        g64conv.pl <from.txt> <to.g71> [<speedRotationSpec>]\n".
@@ -72,6 +72,7 @@ if (@ARGV < 2)
        "          d500        sets maximum delta in rotation detection\n".
        "          v250        sets flux range to verify rotation\n".
        "          ad1 or ad2  choose which algorithm to use for decoding\n".
+       "          rpm300      sets the decoders rpm\n".
        "        or a comma separated list of the ones before.\n"
        ;
 }
@@ -230,7 +231,7 @@ elsif ($from =~ /\.g((64)|(71))$/i && $to =~ /\.d64$/i)
    $range = "1..35" unless defined $range;
    my $ret = "";
    my $range2 = parseRange($range);
-   my $d64 = g64tod64($g64, $range2);
+   my $d64 = g64tod64($g64, $range2, $pass);
    writefileRaw($d64, $to);
 }
 elsif ($from =~ /\.g((64)|(71))$/i && $to =~ /\.d71$/i)
@@ -584,6 +585,72 @@ elsif ($from eq "filter" &&  $to =~ /\.txt$/i)
 
    writefile($ret, $level);
 }
+elsif ($from eq "align" &&  $to =~ /\.txt$/i && $level =~ /\.txt$/i)
+{
+   my $p64 = parseP64txt( readfile($to));
+   my $par =  parseRotationSpeedParameter($pass);
+   my $res = "";
+   
+   $res .= "write-protect 1\n" if $p64->{writeprotect};
+   $res .= "sides 2\n" if $p64->{sides} == 2;
+   
+   for my $p64track ( @{$p64->{tracks}})
+   {
+   	my $trackno = $p64track->{track};
+   	
+   	print "Aligning track $trackno\n";
+   	
+   	my $Flux = normalizeP64Flux ($p64track->{flux});
+   	my $speed = getSpeedZone($Flux, $trackno, $par);
+   	my $bitstream = fluxtobitstream($Flux, $speed, $par);
+   	my $bitstream2 = $bitstream;
+   	$bitstream2 =~ s/_//g;
+   	
+   	if (($bitstream2.$bitstream2) =~ /(?<=111111111)(1{10,}0101001001..........0101001010)/)
+   	{
+          my $posSearch = $-[0];
+          my $fluxNo = 0;
+          my $pos = 0;
+          my $fluxFound = undef;
+          
+          for (my $i=0; $i<length $bitstream; $i++)
+          {
+             $fluxFound = $fluxNo if $pos == $posSearch;
+             my $c = substr($bitstream, $i, 1);
+             if ($c eq "_")
+             {
+             	$fluxNo++;
+             }
+             else
+             {
+             	$pos++;
+             }
+          }
+          
+          if (defined $fluxFound)
+          {
+          	my $delta = $p64track->{flux}[$fluxFound];
+          	for my $t (@{$p64track->{flux}})
+          	{
+          	   $t = $t + 3200001 - $delta;
+          	   $t -= 3200000 if $t > 3200000;
+          	}
+          	
+          	@{$p64track->{flux}} = sort { $a <=> $b } @{$p64track->{flux}};
+          }
+          
+          
+   	}
+   	
+   	$res .= "track $trackno\n";
+   	for my $t (@{$p64track->{flux}})
+   	{
+           $res .= "   flux $t\n";
+   	}
+   }
+   
+   writefile($res, $level);
+}
 
 else
 {
@@ -692,8 +759,16 @@ sub g64totxt
       if ($level == 0)
       {
          $trackRet .= "   ; length $trackSize\n";
-         $trackRet .= "   speed $speed\n   bytes$trackContentHex\n";
-	 $trackRet .= "end-track\n\n";
+      	 if ($level eq "00")
+      	 {
+            my $trackContentBin = unpack("B*", $trackContent);
+            $trackRet .= "   speed $speed\n   bits $trackContentBin\n";
+      	 }
+      	 else
+      	 {
+            $trackRet .= "   speed $speed\n   bytes$trackContentHex\n";
+	}
+	$trackRet .= "end-track\n\n";
       }
       else
       {
@@ -1343,11 +1418,11 @@ sub txttog64
       {
          if ($speed eq "4")
 	 {
-            $speed = $1;
+            $speed = $1 & 3;
 	 }
 	 else
 	 {
-	    my $newSpeed = $1;
+	    my $newSpeed = $1 & 3;
 	    my $curSpeed = substr($speed, -1, 1);
 	    my $len1 = length($curTrack);
 	    my $len2 = $len1 + $beginat;
@@ -1362,11 +1437,11 @@ sub txttog64
       {
          if ($speed eq "4")
 	 {
-            $speed = $1;
+            $speed = $1 & 3;
 	 }
 	 else
 	 {
-	    my $newSpeed = $1;
+	    my $newSpeed = $1 & 3;
 	    my $curSpeed = substr($speed, -1, 1);
 	    my $len1 = length($curTrack);
 	    my $len2 = $len1 - 5 + $beginat;
@@ -1391,7 +1466,9 @@ sub txttog64
       {
          my $par = $1;
 	 $par =~ s/ //g;
+	 $par =~ s/_//g;
 	 $par =~ s/2/1/g;
+	 $par =~ s/9/0/g;
 	 $curTrack .= $par;
 	 $checksumBlock = 2 if $checksumBlock == 1;
       }
@@ -1946,9 +2023,10 @@ sub parseTrack2
 
 sub g64tod64
 {
-   my ($g64, $range) = @_;
-   my $ret = ("\xDE\xAD\xBE\xEF" x 64) x 683;
-   my $error = "\x02" x 683;
+   my ($g64, $range, $noBlocks) = @_;
+   $noBlocks = 683 unless defined $noBlocks;
+   my $ret = ("\xDE\xAD\xBE\xEF" x 64) x $noBlocks;
+   my $error = "\x02" x $noBlocks;
    
    my $signature = substr($g64, 0, 8);
    return undef unless ($signature eq 'GCR-1541' || $signature eq 'GCR-1571');
@@ -1999,6 +2077,7 @@ sub g64tod64
 	 {
 	    next if $s > $sectors[$t-1];
 	    my $offset1 = $tracks[$t-1] + $s;
+	    next if $offset1 >= $noBlocks;
 	    my $offset2 = $offset1 * 256;
 	    my $content = $tmp2->{$s};
 	    if (length($content) == 256)
@@ -2014,7 +2093,7 @@ sub g64tod64
       }      
    }
    
-   return $ret if $error eq "\1" x 683;
+   return $ret if $error eq "\1" x $noBlocks;
    
    $ret.$error;
 }
@@ -2751,7 +2830,7 @@ sub getSpeedZone1
 
 sub fluxtobitstreamV1
 {
-   my ($flux, $speed) = @_;
+   my ($flux, $speed, $rpm) = @_;
    my $bits = "";
       
    
@@ -2766,7 +2845,7 @@ sub fluxtobitstreamV1
    for (my $i=0; $i<@$flux; $i++)
    {
       my $addBits = "";
-      my $tmeToFlux = $flux->[$i] / 5;
+      my $tmeToFlux = $flux->[$i] / 5 * 300 / $rpm;
       my $timeToFluxReduce = $tmeToFlux - $timeUntilFirstBit;
       my $tmeToFluxAddZeroes =  $tmeToFlux;
       
@@ -2802,6 +2881,7 @@ sub fluxtobitstreamV1
 
 ## print "$tmeToFlux     $addBits\n";
       $bits .= $addBits;
+      $bits .= "_";
    }
 
    $bits;   
@@ -2810,7 +2890,9 @@ sub fluxtobitstreamV1
 sub padbitstream
 {
    my $bits = $_[0];
-   return $bits if length($bits) % 8 == 0;
+   my $orgBits = $bits;
+   $bits =~ s/_//g;
+   return $orgBits if length($bits) % 8 == 0;
    
    my @parts = split(/(?<=111111111)(1{10,})/, $bits);
    my $check = join("", @parts);
@@ -2827,7 +2909,7 @@ sub padbitstream
    
    my $longestSync2 = $longestSync;
    
-   return $bits . ("0" x $bitsToAdd) if $longestSync == 0;
+   return $orgBits . ("9" x $bitsToAdd) if $longestSync == 0;
 
    while ($bitsToAdd > 0)
    {
@@ -2849,7 +2931,38 @@ sub padbitstream
       $longestSync = $longestSync2 if $longestSync < 10;
    }
    
-   join "", @parts;
+   my $bits = join "", @parts;
+   
+   my $ret = "";
+   my $pos1 = 0;
+   my $pos2 = 0;
+   
+   while ($pos2 < length $bits)
+   {
+      my $c1 = substr($orgBits, $pos1, 1);
+      my $c2 = substr($bits, $pos2, 1);
+      
+      if ($c1 eq "_")
+      {
+      	 $ret .= $c1;
+      	 $pos1++;
+      	 next;
+      }
+      
+      if ($c2 eq "2")
+      {
+      	 $ret .= $c2;
+      	 $pos2++;
+      	 next;
+      }
+      
+      die unless $c1 eq $c2;
+      $ret .= $c1;
+      $pos1++;
+      $pos2++;
+   }
+   
+   $ret;
 }
 
 sub reverseFlux
@@ -2915,8 +3028,13 @@ sub parseP64txt
       	die "Invalid line $line\n";
       }
    }
-   
    close ($file);
+   
+   for my $p64track (@{$ret{tracks}})
+   {
+      @{$p64track->{flux}} = sort { $a <=> $b } @{$p64track->{flux}};
+   }
+   
    \%ret;
 }
 
@@ -3003,14 +3121,19 @@ sub parseRotationSpeedParameter
    $ret{deltaMax} = 500;
    $ret{decoderalgorithm} = 2;
    $ret{verifyRange} = 250;
+   $ret{rpm} = 300;
    
    my @range = split(",", $range);
    
    for my $range (@range)
    {
-      if ( $range =~ /^ad([1-2])$/i)
+      if ( $range =~ /^ad([0-2])$/i)
       {
       	$ret{decoderalgorithm} = $1;
+      }
+      elsif ( $range =~ /^rpm([0-9\.]+)$/i)
+      {
+      	$ret{rpm} = $1;
       }
       elsif ( $range =~ /^v([0-9]+)$/i)
       {
@@ -3044,6 +3167,20 @@ sub parseRotationSpeedParameter
             $ret{speed}{$i} = $tmp{$i} unless exists $ret{rotation}{$i};
          }
       }
+      elsif ( $range eq "sstd8250")
+      {
+         my %tmp = ();
+         
+         $tmp{($_+1)/2} = $tmp{128+($_+1)/2} = 7 for (1..39);
+         $tmp{($_+1)/2} = $tmp{128+($_+1)/2} = 6 for (40..53);
+         $tmp{($_+1)/2} = $tmp{128+($_+1)/2} = 5 for (54..64);
+         $tmp{($_+1)/2} = $tmp{128+($_+1)/2} = 4 for (65..77);
+         
+         for my $i (keys %tmp)
+         {
+            $ret{speed}{$i} = $tmp{$i} unless exists $ret{rotation}{$i};
+         }
+      }
       elsif ( $range =~ /^([0-9]+(?:\.5)?)(?:\.\.([0-9]+(?:\.5)?))?(?:\/([0-9]+(?:\.5)))?=([rs])([0-9]+)$/i)
       {
       	# Parameter: Start, End, Incr, "rs", val
@@ -3051,6 +3188,14 @@ sub parseRotationSpeedParameter
       	
       	$incr = 1 unless defined $end;
       	$end = $start unless defined $end;
+      	my $is8250 = 0;
+      	if ($incr eq "8250")
+      	{
+           $is8250 = 1;
+           $incr = 0.5;
+           $start = ($start+1)/2;
+           $end = ($end+1)/2;
+      	}
       	
       	unless (defined $incr)
       	{
@@ -3096,20 +3241,22 @@ sub parseRotationSpeedParameter
 
 sub fluxtobitstreamV2
 {
-   my ($flux, $speed) = @_;
+   my ($flux, $speed, $rpm) = @_;
    my $bits = "";
    
    my $pulseactive = 0;
    my $clock = 0;
    my $counter = 0;
    my $tcarry = 0;
+   my $pulseDuration = 40;
+   $pulseDuration = 25 if $speed >= 4; # Exact value unknown
    
    my $timePerBit = (4 - 0.25 * $speed)/1000000;
    
    for (my $i=-@$flux; $i<@$flux; $i++)
    {
       $bits = "" if $i == 0;
-      my $tmeToFlux = $flux->[$i] / 5 + $tcarry;
+      my $tmeToFlux = $flux->[$i] / 5 * 300 / $rpm + $tcarry;
 
       my $delay = 0;
       
@@ -3117,7 +3264,7 @@ sub fluxtobitstreamV2
       
       do
       {
-         if ($delay == 40 && $pulseactive == 1)
+         if ($delay == $pulseDuration && $pulseactive == 1)
          {
             $clock = $speed;
             $counter = 0;
@@ -3144,6 +3291,7 @@ sub fluxtobitstreamV2
          $delay ++;
          $clock ++;
       } while (6.25e-8 * $delay < $tmeToFlux);
+      $bits .= "_";
       
       $tcarry = $tmeToFlux - ($delay - 1) * 6.25e-8;
    }
@@ -3157,9 +3305,11 @@ sub fluxtobitstream
    
    my $ret;
    my $alg = $param->{decoderalgorithm};
+   my $rpm = $param->{rpm};
 
-   $ret = fluxtobitstreamV2($flux, $speed) if $alg == 2;
-   $ret = fluxtobitstreamV1($flux, $speed) if $alg == 1;
+   $ret = fluxtobitstreamV2($flux, $speed, $rpm) if $alg == 2;
+   $ret = fluxtobitstreamV1($flux, $speed, $rpm) if $alg == 1;
+   $ret = fluxtobitstreamV1($flux, 1.5, $rpm) if $alg == 0;
    
    $ret;
 }
