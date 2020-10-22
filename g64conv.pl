@@ -44,6 +44,7 @@ if (@ARGV < 2)
        "        g64conv.pl <from.g71> <to.d71> [<range>]\n".
 
        "        g64conv.pl filter <from.txt> <to.txt> [<range>] [<offset>]\n".
+       "        g64conv.pl align <from.txt> <to.txt> [<speedRotationSpec>]\n".
 
        "mode may be 0 (hex only) or 1 (gcr parsed, default) or\n".
        "        2 (gcr parsed with warp25 heuristic).\n".
@@ -82,6 +83,7 @@ my $from = $ARGV[0];
 my $to = $ARGV[1];
 my $level = $ARGV[2];
 my $pass = $ARGV[3];
+my $yap = $ARGV[4];
 
 my %warp25tableEnc = ( 0 => 73, 1 => 74, 2 => 75, 3 => 77, 4 => 78, 5 => 82, 6 => 83, 7 => 85, 8 => 86, 9 => 89, 10 => 90, 11 => 91, 12 => 93, 13 => 94, 14 => 101, 15 => 102, 32 => 105, 33 => 106, 34 => 107, 35 => 109, 36 => 110, 37 => 114, 38 => 115, 39 => 117, 40 => 118, 41 => 121, 42 => 122, 43 => 123, 44 => 146, 45 => 147, 46 => 149, 47 => 150, 64 => 153, 65 => 154, 66 => 155, 67 => 157, 68 => 158, 69 => 165, 70 => 166, 71 => 169, 72 => 170, 73 => 171, 74 => 173, 75 => 174, 76 => 178, 77 => 179, 78 => 181, 79 => 182, 96 => 185, 97 => 186, 98 => 187, 99 => 189, 100 => 201, 101 => 202, 102 => 203, 103 => 205, 104 => 206, 105 => 210, 106 => 211, 107 => 213, 108 => 214, 109 => 217, 110 => 218, 111 => 219,  );
 my %warp25tableDec = ();
@@ -651,7 +653,11 @@ elsif ($from eq "align" &&  $to =~ /\.txt$/i && $level =~ /\.txt$/i)
    
    writefile($res, $level);
 }
-
+elsif ($from eq "find" &&  $to =~ /\.txt$/i && $level =~ /\.txt$/i  && $pass =~ /\.txt$/i   && $yap =~ /\.txt$/i)
+{
+   my $res = findPluxPosition($to, $level, $pass);
+   writefile($res, $yap);
+}
 else
 {
    die "Unknown conversion\n";
@@ -2471,8 +2477,53 @@ sub nb2totxt
    $ret;
 }
 
-
-
+sub parseBitsTxt
+{
+   my ($p64txt,) = @_;
+   my %ret = ();
+   my $line;
+   my $track;
+   
+   open (my $file, "<", \$p64txt) or die;
+   while ($line = <$file>)
+   {
+      chomp $line;
+      $line =~ s/^ +//;
+      if ($line eq "")
+      {
+      }
+      elsif ($line =~ /^;/)
+      {
+      }
+      elsif ($line =~ /^no-tracks .*/)
+      {
+      }
+      elsif ($line =~ /^track-size .*/)
+      {
+      }
+      elsif ($line =~ /^speed .*/)
+      {
+      }
+      elsif ($line =~  /^track ([0-9]+(?:\.5)?)$/ )
+      {
+      	$track = $1;
+      }
+      elsif ($line =~ /^end-track$/)
+      {
+      }
+      elsif ($line =~  /^bits (.*)$/ )
+      {
+      	$ret{$track} = $1;
+      }
+      else
+      {
+      	die "Invalid line $line\n";
+      }
+   }
+   
+   close ($file);
+   \%ret;
+}
 
 
 ### Flux related
@@ -2759,23 +2810,6 @@ sub getSpeedZone
    
    $ret;
 }
-
-sub doGetSpeedZone
-{
-   my ($flux, $track, $spec) = @_;
-   
-   if (exists $spec->{speed}{$track}) { return $spec->{speed}{$track}; }
-   if (exists $spec->{speed}{default}) { return $spec->{speed}{default}; }
-   
-   my $speed = getSpeedZone1($flux);
-   return undef unless defined $speed;
-   return $speed if $speed >= 0;
-   print "   Warning: Speed zone not sure\n";
-   -$speed-1;
-}
-
-
-
 
 sub getSpeedZone1
 {
@@ -3120,6 +3154,7 @@ sub parseRotationSpeedParameter
    $ret{rotation}{default} = 0;
    $ret{deltaMax} = 500;
    $ret{decoderalgorithm} = 2;
+   $ret{sppedzonealgorithm} = 1;
    $ret{verifyRange} = 250;
    $ret{rpm} = 300;
    
@@ -3130,6 +3165,10 @@ sub parseRotationSpeedParameter
       if ( $range =~ /^ad([0-2])$/i)
       {
       	$ret{decoderalgorithm} = $1;
+      }
+      elsif ( $range =~ /^as([1-2])$/i)
+      {
+      	$ret{sppedzonealgorithm} = $1;
       }
       elsif ( $range =~ /^rpm([0-9\.]+)$/i)
       {
@@ -3311,5 +3350,169 @@ sub fluxtobitstream
    $ret = fluxtobitstreamV1($flux, $speed, $rpm) if $alg == 1;
    $ret = fluxtobitstreamV1($flux, 1.5, $rpm) if $alg == 0;
    
+   $ret;
+}
+
+sub doGetSpeedZone
+{
+   my ($flux, $track, $spec) = @_;
+   
+   if (exists $spec->{speed}{$track}) { return $spec->{speed}{$track}; }
+   if (exists $spec->{speed}{default}) { return $spec->{speed}{default}; }
+   
+   my $speed ;
+   $speed = getSpeedZone1($flux) if $spec->{sppedzonealgorithm} == 1;
+   $speed = getSpeedZone2($flux) if $spec->{sppedzonealgorithm} == 2 || !defined($speed);
+   return undef unless defined $speed;
+   return $speed if $speed >= 0;
+   print "   Warning: Speed zone not sure\n";
+   -$speed-1;
+}
+
+
+
+
+sub getSpeedZone2
+{
+   my $flux = $_[0];	
+   my $sync = 0;
+   my $syncsum = 0;
+   my $syncsum2 = 0;
+   my $speed = undef;
+   my %speed = ();
+   
+   for my $v (@$flux)
+   {
+      my $vv = $v * 3200000;
+      
+      if ($vv >= 41 && $vv <=69)
+      {
+         $sync++;
+         $syncsum += $vv;
+      }
+      else
+      {
+      	 if ($sync > 10)
+      	 {
+      	 	$syncsum = $syncsum / $sync;
+     	 	my $curspeed = undef;
+      	 	$curspeed = 3 if 49 < $syncsum && $syncsum <= 54;
+      	 	$curspeed = 2 if 54 < $syncsum && $syncsum <= 58;
+      	 	$curspeed = 1 if 58 < $syncsum && $syncsum <= 62;
+      	 	$curspeed = 0 if 62 < $syncsum && $syncsum <= 66;
+      	 	$speed = $curspeed unless defined $speed;
+      	 	$speed = -1 if $speed ne $curspeed && defined $curspeed;
+      	 	$speed{$curspeed}++ if defined $speed;
+      	 }
+      	
+         $sync = 0;
+         $syncsum = 0;
+      }
+      
+   }
+   
+   if ($speed == -1)
+   {
+      my @tmp = sort { $speed{$b} <=> $speed{$a} } keys %speed;
+      my @tmp2 = sort { $a <=> $b } keys %speed;
+
+      if ($tmp2[-1] - $tmp2[0] == 2)
+      {
+        print "   Warning: This seems to be a multi speed zone track, using common neighbour\n";
+      	$speed = $tmp2[0] + 1;
+        $speed = -$tmp[0]-1;
+      }
+      elsif ($tmp2[-1] - $tmp2[0] == 1)
+      {
+        print "   Warning: This seems to be a multi speed zone track of two neighbour speeds\n";
+        $speed = $tmp2[0] + 1;
+        $speed = -$tmp[0]-1;
+      }
+      else
+      {
+         $speed = -$tmp[0]-1;
+        print "   Warning: This seems to be a multi speed zone track\n";
+      }
+   }
+   
+   $speed;
+}
+
+
+sub findPluxPosition
+{
+   my ($filename1, $filename2, $filename3) = @_;
+	
+   my $p64 = parseP64txt readfile $filename1;
+   my $org = parseBitsTxt readfile $filename2; # This needs to be the "raw" file of flux decoding
+   my $tmpFixedFile = readfile $filename3;
+   my $g64 = txttog64($tmpFixedFile, undef, "1541");
+   my $txt00 = g64totxt($g64, "00");
+   my $fixed = parseBitsTxt $txt00;
+   my $ret = "";
+   
+   for my $track (sort { $a <=> $b} keys %$fixed)
+   {
+      next unless defined $org->{$track};
+      my $cFixed = $fixed->{$track};
+      my $corg = $org->{$track};
+      
+      my $corg2 = $corg;
+      $corg2 =~ s/2/1/g;
+      $corg2 =~ s/9/0/g;
+      $corg2 =~ s/_//g;
+      
+      next if $corg2 eq $cFixed;
+      
+      $ret .= "Track $track differs\n";
+      $ret .= "org fixed fluxno fluxpos\n";
+      
+      my $posO = 0;
+      my $posF = 0;
+      my $fluxNo = 0;
+      my @fluxBits = ();
+      
+      my $idx = index $corg, "_", 0;
+      push  (@fluxBits, substr $corg, 0, $idx);
+      
+      while ($posO < length $corg)
+      {
+        my $cO = substr($corg, $posO, 1);
+        my $cF = substr($cFixed, $posF, 1);
+        
+        if ($cO eq "_")
+        {
+           my $idx = index $corg, "_", $posO+1;
+           push (@fluxBits, substr$corg, $posO+1, $idx-$posO);
+        	$posO++;
+        	$fluxNo++;
+        	next;
+        }
+        if ($cO eq "2" && $cF eq "1")
+        {
+        	$posO++;
+        	$posF++;
+        	next;
+        }
+        if ($cO eq "9" && $cF eq "0")
+        {
+        	$posO++;
+        	$posF++;
+        	next;
+        }
+        if ($cO eq $cF)
+        {
+        	$posO++;
+        	$posF++;
+        	next;
+        }
+        my $fluxPos = $p64->{tracks}[0]{flux}[$fluxNo];
+   
+        $ret .= "$cO $cF $fluxNo $fluxPos\n";
+        	$posO++;
+        	$posF++;
+        	next;
+      }
+   }
    $ret;
 }
