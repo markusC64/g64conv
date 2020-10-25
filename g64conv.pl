@@ -725,6 +725,68 @@ elsif ($from =~ /\.scp$/i && $to =~ /\.txt$/i)
     
   writefile($ret, $to);
 }
+elsif ($from =~ /\.scp$/i && $to =~ /\.g64$/i)
+{
+   $level = 1 unless defined $level;
+   $pass = 0 unless defined $pass;
+   $pass = parseRotationSpeedParameter($pass);
+
+  my $scp = readscp($from);
+  
+  my $ret = "";
+  $ret .= "no-tracks 84\ntrack-size 7928\n"  if $level ne "p64";
+  
+  my @tracks = sort { $a <=> $b } keys %{ $scp->{tracks} };
+  
+  my $isDoubleStep = $tracks[-1] < 90;
+  
+  for my $rawtrack (@tracks)
+  {
+     my $trackNo;
+     if ($isDoubleStep)
+     {
+        $trackNo = int($rawtrack/2) + 1;
+     }
+     else
+     {
+        $trackNo = int($rawtrack/2)/2 + 1;
+     }
+     my $side = $rawtrack & 1;
+     next if $side == 1;
+     
+     my $fluxRaw = extractTrackFromScp($scp, $rawtrack);
+     next unless defined $fluxRaw;
+     my $fluxMetadata = extractRotation($fluxRaw, $pass, $trackNo);
+     my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
+     $Flux = reverseFlux($Flux) if $side == 1;
+
+     if ($level eq "p64")
+     {
+        $ret .= "track $trackNo\n";
+        my $sum = 1;
+        for my $v (@$Flux)
+        {
+           my $y = $v * 3200000 ;
+           $sum += $y;
+           $sum -= 3200000 if $sum >= 3200000;
+           $ret .= "   flux $sum\n";
+        }
+     }
+     else
+     {
+        my $speed = getSpeedZone($Flux, $trackNo, $pass);
+        my $bitstream = fluxtobitstream($Flux, $speed, $pass);
+        $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
+        
+        $ret .= "track $trackNo\n";
+        $ret .= "   speed $speed\n";
+        $ret .= "   bits $bitstream\n";
+        $ret .= "end-track\n";
+     }
+  }
+  my $g64 = txttog64($ret, undef, "1541");
+  writefileRaw($g64, $to);
+}
 else
 {
    die "Unknown conversion\n";
@@ -3627,60 +3689,45 @@ sub readscp
       die unless $trackno == $track;
       my $carry = 0;
       
-      my $minStart = 1e9;
-      my $maxnd = 0;
-#print "Track $track\n";
-      
       for (my $r = 0; $r<$rotations; $r++)
       {
          my $indexTime = unpack "V", substr($trkpacket, 4+12*$r, 4);
          my $trackLength = unpack "V", substr($trkpacket, 4+12*$r+4, 4);
-         my $dataOffset= unpack "N", substr($trkpacket, 4+12*$r+6, 4);
+         my $dataOffset= unpack "V", substr($trkpacket, 4+12*$r+8, 4);
          next unless $dataOffset;
 #print "DEBUG: ". $dataOffset . ".." . ($dataOffset+2*$trackLength) . "\n";   
          my $endOffset = $dataOffset + 2*$trackLength;
          
-         if ($dataOffset < $minStart)
-         {
-            $minStart = $dataOffset;
-         }
-         if ($endOffset > $maxnd)
-         {
-            $maxnd = $endOffset;
-         }
          $ret{tracks}{$track}[$r]{indexTime} = $indexTime;
 
          my $cnt = 0;
          for (my $i=0; $i<$trackLength; $i++)
          {
             my $val = unpack "n", substr($trkpacket, $dataOffset+2*$i, 2);
-           
             if ($val)
             {
             	$cnt++;
             }
         }
-        $ret{tracks}{$track}[$r]{len} = $cnt;
-     }
-     
-     $minStart = 16384 if $minStart < 16384;
-         
-      my @trackdata = ();
-      for (my $i=0; $i<($maxnd-$minStart)/2; $i++)
-      {
-         my $val = unpack "n", substr($trkpacket, $minStart+2*$i, 2);
+
+       my @trackdata = ();
+       for (my $i=0; $i<$trackLength; $i++)
+       {
+	          my $val = unpack "n", substr($trkpacket, $dataOffset+2*$i, 2);
         
-         if ($val)
-         {
-         	push (@trackdata, $val);
-         }
-         else
-         {
-         	$carry += 65536;
-         }
+          if ($val)
+          {
+          	push (@trackdata, $val);
+          }
+          else
+          {
+          	$carry += 65536;
+          }
+      }
+      $ret{tracks}{$track}[$r]{flux} = \@trackdata;
      }
-      $ret{tracks}{$track}[0]{flux} = \@trackdata;
    }
+
    \%ret;
 }
 
@@ -3688,17 +3735,22 @@ sub readscp
 sub extractTrackFromScp
 {
    my ($scp, $track) = @_;
+   print "Reading raw track $track\n";
    my %ret = ();
    $ret{sck} = 40000000;
    
-   my @flux = @{ $scp->{tracks}{$track}[0]{flux}};
-
+   my @flux = ();
+   for (my $i=0; $i<$scp->{norotations}; $i++)
+   {
+      next unless defined $scp->{tracks}{$track}[$i];
+      my $rot = $scp->{tracks}{$track}[$i]{flux};
+      push (@flux, @$rot);
+   }
    $ret{flux} = [];
    my $refflux = $ret{flux};
    
    my $cnt = 0;
    my $s = 0;
-   my $len = $scp->{tracks}{$track}[0]{len};
    for my $f ( @flux )
    {
       my %tmp = ();
@@ -3716,11 +3768,12 @@ sub extractTrackFromScp
    for (my $i=0; $i<$scp->{norotations}; $i++)
    {
       next unless defined $scp->{tracks}{$track}[$i];
+      my $rot = $scp->{tracks}{$track}[$i]{flux};
       my %tmp = ();
       $tmp{streamPos} = $s + 2;
       $tmp{sampleCounter} = 0;
       push (@$refind, \%tmp);
-      $s += $len;
+      $s += @$rot;
    }
    \%ret;
 }
