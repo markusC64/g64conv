@@ -32,6 +32,9 @@ if (@ARGV < 2)
        "        g64conv.pl <from??.0.raw> <to.g64> [<speedRotationSpec>]\n".
        "        g64conv.pl <from.txt> <to.txt>\n [<mode|fluxMode>] [<speedRotationSpec>]\n".
 
+       "        g64conv.pl <from.scp> <to.txt> [<fluxMode>] [<speedRotationSpec>]\n".
+       "        g64conv.pl <from.scp> <to.g64> [<speedRotationSpec>]\n".
+
        "        g64conv.pl <from.nb2> <to.txt> [<mode>] [<rotation>]\n".
 
        "        g64conv.pl <from.g71> <to.txt> [<mode>]\n".
@@ -74,6 +77,8 @@ if (@ARGV < 2)
        "          v250        sets flux range to verify rotation\n".
        "          ad1 or ad2  choose which algorithm to use for decoding\n".
        "          rpm300      sets the decoders rpm\n".
+       "          scpside0    sets side to process in case of scp file\n".
+       "                      0=first, 1=secons, 2=bith\n".
        "        or a comma separated list of the ones before.\n"
        ;
 }
@@ -664,10 +669,12 @@ elsif ($from =~ /\.scp$/i && $to =~ /\.txt$/i)
    $pass = 0 unless defined $pass;
    $pass = parseRotationSpeedParameter($pass);
 
+  my $sideToProcess = $pass->{scpside};
+
   my $scp = readscp($from);
   
-  my $ret = "";
-  $ret .= "no-tracks 84\ntrack-size 7928\n"  if $level ne "p64";
+  my $ret0 .= "";
+  my $ret1 = "";
   
   my @tracks = sort { $a <=> $b } keys %{ $scp->{tracks} };
   
@@ -685,24 +692,28 @@ elsif ($from =~ /\.scp$/i && $to =~ /\.txt$/i)
         $trackNo = int($rawtrack/2)/2 + 1;
      }
      my $side = $rawtrack & 1;
-     next if $side == 1;
+     next if $sideToProcess != 2 && $side != $sideToProcess;
+     $side = 0 if $sideToProcess == 1;
      
      my $fluxRaw = extractTrackFromScp($scp, $rawtrack);
      next unless defined $fluxRaw;
-     my $fluxMetadata = extractRotation($fluxRaw, $pass, $trackNo);
+     my $fluxMetadata = extractRotation($fluxRaw, $pass, $trackNo+128*$side);
      my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
-     $Flux = reverseFlux($Flux) if $side == 1;
+     $Flux = reverseFlux($Flux) if $sideToProcess == 1;
 
      if ($level eq "p64")
      {
-        $ret .= "track $trackNo\n";
+     	$trackNo += 128 if $side == 1;
+        $ret0 .= "track $trackNo\n" if $side == 0;
+        $ret1 .= "track $trackNo\n" if $side == 1;
         my $sum = 1;
         for my $v (@$Flux)
         {
-           my $y = $v * 3200000 ;
+           my $y = $v * 3200000;
            $sum += $y;
            $sum -= 3200000 if $sum >= 3200000;
-           $ret .= "   flux $sum\n";
+           $ret0 .= "   flux $sum\n" if $side == 0;
+           $ret1 .= "   flux $sum\n" if $side == 1;
         }
      }
      else
@@ -711,30 +722,53 @@ elsif ($from =~ /\.scp$/i && $to =~ /\.txt$/i)
         my $bitstream = fluxtobitstream($Flux, $speed, $pass);
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
-        $ret .= "track $trackNo\n";
-        $ret .= "   speed $speed\n";
-        $ret .= "   bits $bitstream\n";
-        $ret .= "end-track\n";
+            if ($side == 0)
+            {
+               $ret0 .= "track $trackNo\n";
+               $ret0 .= "   speed $speed\n";
+               $ret0 .= "   bits $bitstream\n";
+               $ret0 .= "end-track\n";
+            }
+            else
+            {
+               $trackNo += 42;
+               $ret1 .= "track $trackNo\n";
+               $ret1 .= "   speed $speed\n";
+               $ret1 .= "   bits $bitstream\n";
+               $ret1 .= "end-track\n";
+            }
      }
   }
-        if ($level ne "raw" && $level ne "rawUnpadded" && $level ne "p64")
-        {
-             my $g64 = txttog64($ret, undef, "1541");
-             $ret = g64totxt($g64, $level)
-        }
-    
-  writefile($ret, $to);
+  
+  my $ret = "no-tracks 84\ntrack-size 7928\n" unless $ret1;
+  $ret .= "no-tracks 168\ntrack-size 7928\n" if $ret1;
+  my $txt;
+
+       if ($level ne "raw" && $level ne "rawUnpadded")
+       {
+         my $gxx = txttog64($ret.$ret0.$ret1, undef,  "1541");
+         $txt = g64totxt($gxx, $level);
+       }
+       else
+       {
+          $txt = $ret.$ret0.$ret1;
+       }
+      writefile($txt, $to);
 }
-elsif ($from =~ /\.scp$/i && $to =~ /\.g64$/i)
+elsif ($from =~ /.scp$/i && $to =~ /\.g((64)|(71))$/i)
 {
-   $level = 1 unless defined $level;
-   $pass = 0 unless defined $pass;
-   $pass = parseRotationSpeedParameter($pass);
+   my $dest = "1541";
+   $dest = "1571" if $to =~ /\.g71$/i;
+
+   $level = "0" unless defined $level;
+   $level = parseRotationSpeedParameter($level);
+
+  my $sideToProcess = $pass->{scpside};
 
   my $scp = readscp($from);
   
-  my $ret = "";
-  $ret .= "no-tracks 84\ntrack-size 7928\n"  if $level ne "p64";
+  my $ret0 .= "";
+  my $ret1 = "";
   
   my @tracks = sort { $a <=> $b } keys %{ $scp->{tracks} };
   
@@ -752,40 +786,42 @@ elsif ($from =~ /\.scp$/i && $to =~ /\.g64$/i)
         $trackNo = int($rawtrack/2)/2 + 1;
      }
      my $side = $rawtrack & 1;
-     next if $side == 1;
+     next if $sideToProcess != 2 && $side != $sideToProcess;
+     $side = 0 if $sideToProcess == 1;
      
      my $fluxRaw = extractTrackFromScp($scp, $rawtrack);
      next unless defined $fluxRaw;
-     my $fluxMetadata = extractRotation($fluxRaw, $pass, $trackNo);
+     my $fluxMetadata = extractRotation($fluxRaw, $pass, $trackNo+128*$side);
      my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
-     $Flux = reverseFlux($Flux) if $side == 1;
+     $Flux = reverseFlux($Flux) if $sideToProcess == 1;
 
-     if ($level eq "p64")
-     {
-        $ret .= "track $trackNo\n";
-        my $sum = 1;
-        for my $v (@$Flux)
-        {
-           my $y = $v * 3200000 ;
-           $sum += $y;
-           $sum -= 3200000 if $sum >= 3200000;
-           $ret .= "   flux $sum\n";
-        }
-     }
-     else
-     {
-        my $speed = getSpeedZone($Flux, $trackNo, $pass);
-        my $bitstream = fluxtobitstream($Flux, $speed, $pass);
+        my $speed = getSpeedZone($Flux, $trackNo, $level);
+        my $bitstream = fluxtobitstream($Flux, $speed, $level);
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
-        $ret .= "track $trackNo\n";
-        $ret .= "   speed $speed\n";
-        $ret .= "   bits $bitstream\n";
-        $ret .= "end-track\n";
-     }
+            if ($side == 0)
+            {
+               $ret0 .= "track $trackNo\n";
+               $ret0 .= "   speed $speed\n";
+               $ret0 .= "   bits $bitstream\n";
+               $ret0 .= "end-track\n";
+            }
+            else
+            {
+               $trackNo += 42;
+               $ret1 .= "track $trackNo\n";
+               $ret1 .= "   speed $speed\n";
+               $ret1 .= "   bits $bitstream\n";
+               $ret1 .= "end-track\n";
+            }
   }
-  my $g64 = txttog64($ret, undef, "1541");
-  writefileRaw($g64, $to);
+  
+  my $ret = "no-tracks 84\ntrack-size 7928\n" unless $ret1;
+  $ret .= "no-tracks 168\ntrack-size 7928\n" if $ret1;
+  my $txt;
+
+  my $gxx = txttog64($ret.$ret0.$ret1, undef,  $dest);
+  writefileRaw($gxx, $to);
 }
 else
 {
@@ -2744,7 +2780,7 @@ sub parseKryofluxRawFile
    	   	my $sampleCounter = unpack "V", substr $data, $pos+8, 4;
    	   	my $IndexCounter = unpack "V", substr $data, $pos+12, 4;
    	   	
-   	        my %tmp = ();;
+   	        my %tmp = ();
    	        $tmp{streamPos} = $streamPos;
    	        $tmp{sampleCounter} = $sampleCounter;
    	        $tmp{indexCounter} = $IndexCounter;
@@ -2809,11 +2845,13 @@ sub extractRotation
 {
    my ($content, $spec, $track) = @_;
    my $rotation = 0;
-   my $verifyRange = 25;
+   my $verifyRange1 = -25;
+   my $verifyRange2 = 25;
 
    if (exists $spec->{rotation}{default}) { $rotation = $spec->{rotation}{default}; }
    if (exists $spec->{rotation}{$track}) { $rotation = $spec->{rotation}{$track}; }
-   if (exists $spec->{verifyRange}) { $verifyRange = $spec->{verifyRange}; }
+   if (exists $spec->{verifyRange1}) { $verifyRange1 = $spec->{verifyRange1}; }
+   if (exists $spec->{verifyRange2}) { $verifyRange2 = $spec->{verifyRange2}; }
    
    my $refIndicies = $content->{indicies};
    my $refFlux = $content->{flux};
@@ -2851,7 +2889,7 @@ sub extractRotation
       my @index = grep { $_->{streamPos} < $streamPosInd  } @$refFlux;
       my $prevIndex1 = @index- 1;
       
-      next if $prevIndex1 < 0;
+      next if $prevIndex1 <= -$verifyRange1;
 
       $streamPosInd = $refIndicies->[$i+1]{streamPos};
       @index = grep { $_->{streamPos} < $streamPosInd  } @$refFlux;
@@ -2872,7 +2910,7 @@ sub extractRotation
       	
       	my $err = 0;
       	
-      	for my $i (-$verifyRange..$verifyRange)
+      	for my $i ($verifyRange1..$verifyRange2)
       	{
            my $val1 = $refFlux->[$prevIndex1 + $i]{Value};
            my $val2 = $refFlux->[$prevIndex2 + $i + $offset]{Value};
@@ -2900,8 +2938,8 @@ sub extractRotation
       $ret{adjustFlux2} = $refIndicies->[$i+1]{sampleCounter};
       
       $ret{fluxSum} = $fluxSum;
-      $ret{tracktime} = $fluxSum / $content->{sck};;
-      $ret{rpm} = 60 / $fluxSum * $content->{sck};;
+      $ret{tracktime} = $fluxSum / $content->{sck};
+      $ret{rpm} = 60 / $fluxSum * $content->{sck};
       return \%ret;
    }
    
@@ -3284,8 +3322,10 @@ sub parseRotationSpeedParameter
    $ret{deltaMax} = 500;
    $ret{decoderalgorithm} = 2;
    $ret{sppedzonealgorithm} = 1;
-   $ret{verifyRange} = 250;
+   $ret{verifyRange1} = -250;
+   $ret{verifyRange2} = 250;
    $ret{rpm} = 300;
+   $ret{scpside} = 0;
    
    my @range = split(",", $range);
    
@@ -3303,9 +3343,17 @@ sub parseRotationSpeedParameter
       {
       	$ret{rpm} = $1;
       }
-      elsif ( $range =~ /^v([0-9]+)$/i)
+      elsif ( $range =~ /^v(-?[0-9]+)(?:\.\.(-?[0-9]+))?$/i)
       {
-      	$ret{verifyRange} = $1;
+      	if (defined($2))
+      	{
+      	   die "Empty verification range\n" unless $1 < $2;
+      	}
+      	
+      	$ret{verifyRange1} = $1;
+      	$ret{verifyRange2} = -$1 unless defined $2;
+      	$ret{verifyRange2} = $1;
+      	$ret{verifyRange2} = $2 if defined $2;
       }
       elsif ( $range =~ /^r?([0-9]+)$/i)
       {
@@ -3348,6 +3396,10 @@ sub parseRotationSpeedParameter
          {
             $ret{speed}{$i} = $tmp{$i} unless exists $ret{rotation}{$i};
          }
+      }
+      elsif ( $range =~ /^scpside([0-2])$/i)
+      {
+            $ret{scpside} = $1;
       }
       elsif ( $range =~ /^([0-9]+(?:\.5)?)(?:\.\.([0-9]+(?:\.5)?))?(?:\/([0-9]+(?:\.5)))?=([rs])([0-9]+)$/i)
       {
@@ -3695,7 +3747,6 @@ sub readscp
          my $trackLength = unpack "V", substr($trkpacket, 4+12*$r+4, 4);
          my $dataOffset= unpack "V", substr($trkpacket, 4+12*$r+8, 4);
          next unless $dataOffset;
-#print "DEBUG: ". $dataOffset . ".." . ($dataOffset+2*$trackLength) . "\n";   
          my $endOffset = $dataOffset + 2*$trackLength;
          
          $ret{tracks}{$track}[$r]{indexTime} = $indexTime;
