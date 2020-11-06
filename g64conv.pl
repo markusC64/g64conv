@@ -809,6 +809,12 @@ elsif ($from =~ /.scp$/i && $to =~ /\.g((64)|(71))$/i)
   my $gxx = txttog64($ret.$ret0.$ret1, undef,  $dest);
   writefileRaw($gxx, $to);
 }
+elsif ($from =~ /\.txt$/i && $to =~ /\.scp$/i)
+{
+   my $txt = readfile($from);
+   my $scp = txt2scp($txt);
+   writefileRaw($scp, $to);
+}
 else
 {
    die "Unknown conversion\n";
@@ -2365,7 +2371,7 @@ sub g64top64txt
       my $track = ($i+1)/2;
       if ($track >= 43)
       {
-         $track = ($track - 42) | 128;
+         $track = ($track - 42) + 128;
       }
       my $p64track = $i+1;
       my $trackTablePosition = 8+4*$i;
@@ -3826,6 +3832,7 @@ sub extractTrackFromScp
    for my $f ( @flux )
    {
       my %tmp = ();
+      $f /= ( $scp->{resolution} + 1);
       $s += $f;
       $tmp{Value} = $f;
       $tmp{FluxSum} = $s;
@@ -3965,4 +3972,144 @@ sub getTrackFromSpeedAndBitstreeam
                $ret .= "   bits $bitstream\n";
    }
    $ret;
+}
+
+sub txt2scp
+{
+   my ($txt,) = @_;
+   my $p64 = parseP64txt($txt);
+   
+   my $head = 0;
+   my $start = undef;
+   my $end = undef;
+   my $doublestep = 1;
+   
+   my $haveHead0 = 0;
+   my $haveHead1 = 0;
+   
+   for my $p64track ( @{$p64->{tracks}})
+   {
+   	my $trackno = $p64track->{track};
+   	$doublestep = 0 if $trackno =~ /\.5$/;
+   	
+   	$haveHead0 = 1 if $trackno < 128;
+   	$haveHead1 = 1 if $trackno >= 128;
+   	
+   	$trackno -= 128 if $trackno >= 128;
+   	$start = $trackno unless defined $start;
+   	$end = $trackno unless defined $end;
+   	
+   	$start = $trackno if $start > $trackno;
+   	$end = $trackno if $end < $trackno;
+   }
+   die if $end > 83;
+   
+   if ($haveHead0 && $haveHead1)
+   {
+      $head = 2;
+   }
+   elsif ($haveHead0 && !$haveHead1)
+   {
+      $head = 0;
+   }
+   elsif (!$haveHead0 && $haveHead1)
+   {
+      $head = 1;
+   }
+   
+   my $flags = 5;
+   $flags += 2 if !$doublestep;
+   
+   my $rawstart;
+   my $rawend;
+   if ($doublestep)
+   {
+      $rawstart = 2*($start-1);
+      $rawend = 2*($end-1)+1;
+   }
+   else
+   {
+      $rawstart = 4*($start-1);
+      $rawend = 4*($end-1)+1;
+   }
+   my $rawhead = ($head+1)%3;
+
+   my $header = "\x" x 0x2b0;
+   substr($header, 0, 3) = "SCP";
+   substr($header, 3, 1) = "\x31";
+   substr($header, 4, 1) = "\0"; # FIXME: what if not commodore?
+   substr($header, 5, 1) = "\x3";
+   substr($header, 6, 1) = chr($rawstart);
+   substr($header, 7, 1) = chr($rawend);
+   substr($header, 8, 1) = chr($flags);
+   substr($header, 9, 1) = "\0";
+   substr($header,10, 1) = chr($rawhead);
+   substr($header,11, 1) = "\0";
+   
+   for my $p64track ( @{$p64->{tracks}})
+   {
+   	my $Flux = normalizeP64Flux ($p64track->{flux});
+   	
+   	my $trackno = $p64track->{track};
+   	my $side = 0;
+   	if ($trackno >= 128)
+   	{
+   	   $side = 1;
+   	   $trackno -= 128;
+   	}
+   	
+   	my $rawTrack;
+   	if ($doublestep)
+   	{
+   	   $rawTrack = ($trackno-1) * 2 + $side;
+   	}
+   	else
+   	{
+   	   $rawTrack = ($trackno-1) * 4 + $side;
+   	}
+   	
+   	my $trkhdr = "\0" x 0x28;
+   	substr($trkhdr,  0, 3) = "TRK";
+   	substr($trkhdr,  3, 1) = chr($rawTrack);
+   	
+        my $data = "";
+        my $carry = 0;
+        for my $f (@$Flux)
+        {
+           my $val = $f * 6666666 + $carry;;
+           my $ival = int $val;
+           $carry = $val - $ival;
+           
+           while ($ival >= 65536)
+           {
+              $ival -= 65536;
+              $data .= "\0\0";
+           }
+           
+           $data .= pack "n", $ival;
+        }
+        
+        my $trkPos = 4;
+        for (my $r = 0; $r<3; $r++)
+        {
+           substr($trkhdr, $trkPos, 4) = pack "V", 6666666;
+           substr($trkhdr, $trkPos+4, 4) = pack "V", length($data)/2;
+           substr($trkhdr, $trkPos+8, 4) = pack "V", length($trkhdr);
+           $trkhdr .= $data;
+           $trkPos += 12;
+        }
+        
+        substr($header, 16+4*$rawTrack, 4) = pack "V", length($header);
+        $header .= $trkhdr;
+   }
+   
+   my $chksum = 0;
+   for (my $i=16; $i<length($header); $i++)
+   {
+      $chksum += ord(substr($header, $i, 1));
+   }
+   
+   substr($header, 12, 4) = pack "V", $chksum & 0xFFFFFFFF;
+  
+   $header;
 }
