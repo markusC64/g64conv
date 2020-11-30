@@ -4562,8 +4562,14 @@ sub txt2scp
    
    if ($haveWriteSplicePos)
    {
-      my $wspHeader = "\x00" x 676;
-      substr($wspHeader, 0, 4) = "WSP\1";
+      my $wspHeader = "\x00" x 692;
+      substr($wspHeader, 0, 4) = "EXTS";
+      substr($wspHeader, 4, 4) = pack "V", 680;
+      substr($wspHeader, 8, 4) = "WRSP";
+      substr($wspHeader, 12, 4) = pack "V", 676;
+
+      substr($wspHeader, 16, 1) = "\0";
+      substr($wspHeader, 17, 1) = "\0";
       $header .= $wspHeader;
    }
    
@@ -4595,7 +4601,7 @@ sub txt2scp
    	
         if ($haveWriteSplicePos && defined $writeSplicePos)
         {
-           substr($header, 0x2b4+4*$rawTrack, 4) = pack "V", ($writeSplicePos * $tlen);
+           substr($header, 0x2c4+4*$rawTrack, 4) = pack "V", ($writeSplicePos * $tlen);
         }
 
 	my $trkhdr = "\0" x 0x28;
