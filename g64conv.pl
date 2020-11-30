@@ -43,11 +43,22 @@ if (@ARGV < 2)
        "        g64conv.pl <from.d71> <to.g81>\n".
        "        g64conv.pl <fromTemplate.txt> <to.g71> <from.d64>\n".
        "        g64conv.pl <fromTemplate.txt> <to.g71> <from.d71>\n".
-       "        g64conv.pl <from.g71> <to.d64> [<range>]\n".
-       "        g64conv.pl <from.g71> <to.d71> [<range>]\n".
+       "        g64conv.pl <from.g71> <to.d64> [<range>] [<noBlocks>]\n".
+       "        g64conv.pl <from.g71> <to.d71> [<range>] [<noBlocks>]\n".
+
+       "        g64conv.pl <from.txt> <to.scp> [<indexTime>]\n".
+       "        g64conv.pl <from.g64> <to.scp> [<indexTime>]\n".
+       "        g64conv.pl <from.g71> <to.scp> [<indexTime>]\n".
+       "        g64conv.pl <from.d64> <to.scp> [<indexTime>]\n".
+       "        g64conv.pl <from.d71> <to.scp> [<indexTime>]\n".
 
        "        g64conv.pl filter <from.txt> <to.txt> [<range>] [<offset>]\n".
        "        g64conv.pl align <from.txt> <to.txt> [<speedRotationSpec>]\n".
+       "        g64conv.pl verify <from.txt> [<range>] [<noBlocks>]\n".
+       "        g64conv.pl verify <from.g64> [<range>] [<noBlocks>]\n".
+       "        g64conv.pl verify <from.d64>\n".
+       "        g64conv.pl verify <from.g71> [<range>] [<noBlocks>]\n".
+       "        g64conv.pl verify <from.d71>\n".
 
        "mode may be 0 (hex only) or 1 (gcr parsed, default) or\n".
        "        2 (gcr parsed with warp25 heuristic).\n".
@@ -186,7 +197,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.g((64)|(71))$/i)
       foreach my $trackData (@$tracks)
       {
          my $trackNoRaw = $trackData->{track};
-        my $trackNo = $trackNoRaw;
+         my $trackNo = $trackNoRaw;
          my $side = 0;
       	 if ($trackNo > 127.75)
       	 {
@@ -194,10 +205,17 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.g((64)|(71))$/i)
       	    $side = 1;
       	 }
          
-        my $Flux = normalizeP64Flux ($trackData->{flux});
+         my $writeSplicePos = $trackData->{writeSplicePos};
+         $writeSplicePos /= 3200000 if defined $writeSplicePos;
+
+         my $Flux = normalizeP64Flux ($trackData->{flux});
 
          my $speed = getSpeedZone($Flux, $trackNo+128*$side, $level);
-         my $bitstream = fluxtobitstream($Flux, $speed, $level, $trackNo+128*$side);
+         my $bitstream = fluxtobitstream($Flux, $speed, $level, $trackNo+128*$side, $writeSplicePos);
+         if (ref $bitstream)
+         {
+            $bitstream = $bitstream->[0];
+         }
          $bitstream = padbitstream($bitstream);
         
             if ($side == 0)
@@ -265,6 +283,7 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.txt$/i)
   
   my $ret = "";
   $ret .= "no-tracks 84\ntrack-size 7928\n"  if $level ne "p64";
+  my $addMarkPositionsAll = {};
 
   for my $filename (@src)
   {
@@ -281,6 +300,7 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.txt$/i)
      my $fluxMetadata = extractRotation($fluxRaw, $pass, $trackNo);
      my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
      $Flux = reverseFlux($Flux) if $side == 1;
+     my $addMarkPositions = undef;
 
      if ($level eq "p64")
      {
@@ -298,6 +318,11 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.txt$/i)
      {
         my $speed = getSpeedZone($Flux, $trackNo, $pass);
         my $bitstream = fluxtobitstream($Flux, $speed, $pass, $trackNo);
+        if (ref $bitstream)
+        {
+           $addMarkPositionsAll->{$trackNo} = $bitstream->[1];
+           $bitstream = $bitstream->[0];
+        }
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
         $ret .= "track $trackNo\n";
@@ -308,7 +333,7 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.txt$/i)
         if ($level ne "raw" && $level ne "rawUnpadded" && $level ne "p64")
         {
              my $g64 = txttog64($ret, undef, "1541");
-             $ret = g64totxt($g64, $level)
+             $ret = g64totxt($g64, $level, $addMarkPositionsAll);
         }
     
   writefile($ret, $to);
@@ -340,6 +365,12 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.g64$/i)
 
      my $speed = getSpeedZone($Flux, $trackNo, $level);
      my $bitstream = fluxtobitstream($Flux, $speed, $level, $trackNo);
+     my $addMarkPositions = undef;
+     if (ref $bitstream)
+     {
+        $addMarkPositions = $bitstream->[1];
+        $bitstream = $bitstream->[0];
+     }
      $bitstream = padbitstream($bitstream);
     
      $ret .= "track $trackNo\n";
@@ -366,6 +397,8 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.txt$/i)
   my $ret1 = "";
   $ret0 .= "no-tracks 168\ntrack-size 7928\n"  if $level ne "p64";
   $ret0 = "sides 2\n" if $level eq "p64";
+  
+  my $addMarkPositionsAll = {};
 
   for my $filename (@src)
   {
@@ -401,6 +434,11 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.txt$/i)
      {
         my $speed = getSpeedZone($Flux, $trackNo+128*$side, $pass);
         my $bitstream = fluxtobitstream($Flux, $speed, $pass, $trackNo+128*$side);
+        if (ref $bitstream)
+        {
+           $addMarkPositionsAll->{$trackNo+42*$side} = $bitstream->[1];
+           $bitstream = $bitstream->[0];
+        }
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
         if ($side == 0)
@@ -423,7 +461,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.txt$/i)
         if ($level ne "raw" && $level ne "rawUnpadded" && $level ne "p64")
         {
              my $g64 = txttog64($ret, undef, "1541");
-             $ret = g64totxt($g64, $level)
+             $ret = g64totxt($g64, $level, $addMarkPositionsAll)
         }
   writefile($ret, $to);
 }
@@ -458,6 +496,12 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.g((64)|(71))$/i)
 
      my $speed = getSpeedZone($Flux, $trackNo+128*$side, $level);
      my $bitstream = fluxtobitstream($Flux, $speed, $level, $trackNo+128*$side);
+     my $addMarkPositions = undef;
+     if (ref $bitstream)
+     {
+        $addMarkPositions = $bitstream->[1];
+       $bitstream = $bitstream->[0];
+     }
      $bitstream = padbitstream($bitstream);
     
         if ($side == 0)
@@ -494,11 +538,15 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.txt$/i)
        my $ret1 = "";
        
        my $tracks = $p64->{tracks};
+       
+       my $addMarkPositionsAll = {};
 
       foreach my $trackData (@$tracks)
       {
+         my $writeSplicePos = $trackData->{writeSplicePos};
+         $writeSplicePos /= 3200000 if defined $writeSplicePos;
          my $trackNoRaw = $trackData->{track};
-        my $trackNo = $trackNoRaw;
+         my $trackNo = $trackNoRaw;
          my $side = 0;
       	 if ($trackNo > 127.75)
       	 {
@@ -506,10 +554,15 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.txt$/i)
       	    $side = 1;
       	 }
          
-        my $Flux = normalizeP64Flux ($trackData->{flux});
+         my $Flux = normalizeP64Flux ($trackData->{flux});
 
          my $speed = getSpeedZone($Flux, $trackNo+128*$side, $pass);
-         my $bitstream = fluxtobitstream($Flux, $speed, $pass, $trackNo+128*$side);
+         my $bitstream = fluxtobitstream($Flux, $speed, $pass, $trackNo+128*$side, $writeSplicePos);
+         if (ref $bitstream)
+         {
+            $addMarkPositionsAll->{$trackNo+42*$side} = $bitstream->[1];
+            $bitstream = $bitstream->[0];
+         }
          $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
             if ($side == 0)
@@ -517,6 +570,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.txt$/i)
                $ret0 .= "track $trackNo\n";
                $ret0 .= getTrackFromSpeedAndBitstreeam($speed, $bitstream);
                $ret0 .= "end-track\n";
+
             }
             else
             {
@@ -534,7 +588,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.txt$/i)
        if ($level ne "raw" && $level ne "rawUnpadded")
        {
          my $gxx = txttog64($ret.$ret0.$ret1, undef,  "1541");
-         $txt = g64totxt($gxx, $level);
+         $txt = g64totxt($gxx, $level, $addMarkPositionsAll);
        }
        else
        {
@@ -600,8 +654,15 @@ elsif ($from eq "align" &&  $to =~ /\.txt$/i && $level =~ /\.txt$/i)
    	my $Flux = normalizeP64Flux ($p64track->{flux});
    	my $speed = getSpeedZone($Flux, $trackno, $par);
    	my $bitstream = fluxtobitstream($Flux, $speed, $par, $trackno);
+        my $addMarkPositions = undef;
+        if (ref $bitstream)
+        {
+           $addMarkPositions = $bitstream->[1];
+           $bitstream = $bitstream->[0];
+        }
    	my $bitstream2 = $bitstream;
    	$bitstream2 =~ s/_//g;
+   	$bitstream2 =~ s/\///g;
    	
    	if (($bitstream2.$bitstream2) =~ /(?<=111111111)(1{10,}0101001001..........0101001010)/)
    	{
@@ -669,6 +730,7 @@ elsif ($from =~ /\.scp$/i && $to =~ /\.txt$/i)
   my @tracks = sort { $a <=> $b } keys %{ $scp->{tracks} };
   
   my $isDoubleStep = $tracks[-1] < 90;
+  my $addMarkPositionsAll = {};
   
   for my $rawtrack (@tracks)
   {
@@ -710,6 +772,11 @@ elsif ($from =~ /\.scp$/i && $to =~ /\.txt$/i)
      {
         my $speed = getSpeedZone($Flux, $trackNo, $pass);
         my $bitstream = fluxtobitstream($Flux, $speed, $pass, $trackNo+128*$side);
+        if (ref $bitstream)
+        {
+           $addMarkPositionsAll->{$trackNo+42*$side} = $bitstream->[1];
+           $bitstream = $bitstream->[0];
+        }
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
             if ($side == 0)
@@ -730,12 +797,14 @@ elsif ($from =~ /\.scp$/i && $to =~ /\.txt$/i)
   
   my $ret = "no-tracks 84\ntrack-size 7928\n" unless $ret1;
   $ret .= "no-tracks 168\ntrack-size 7928\n" if $ret1;
+  $ret = "" if $level eq "p64";
+  
   my $txt;
 
-       if ($level ne "raw" && $level ne "rawUnpadded")
+       if ($level ne "raw" && $level ne "rawUnpadded" && $level ne "p64")
        {
          my $gxx = txttog64($ret.$ret0.$ret1, undef,  "1541");
-         $txt = g64totxt($gxx, $level);
+         $txt = g64totxt($gxx, $level, $addMarkPositionsAll);
        }
        else
        {
@@ -785,6 +854,12 @@ elsif ($from =~ /.scp$/i && $to =~ /\.g((64)|(71))$/i)
 
         my $speed = getSpeedZone($Flux, $trackNo, $level);
         my $bitstream = fluxtobitstream($Flux, $speed, $level, $trackNo+128*$side);
+        my $addMarkPositions = undef;
+        if (ref $bitstream)
+        {
+           $addMarkPositions = $bitstream->[1];
+           $bitstream = $bitstream->[0];
+        }
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
             if ($side == 0)
@@ -812,8 +887,68 @@ elsif ($from =~ /.scp$/i && $to =~ /\.g((64)|(71))$/i)
 elsif ($from =~ /\.txt$/i && $to =~ /\.scp$/i)
 {
    my $txt = readfile($from);
-   my $scp = txt2scp($txt);
+   my $scp = txt2scp($txt, $level);
    writefileRaw($scp, $to);
+}
+elsif ($from =~ /\.g((64)|(71))$/i && $to =~ /\.scp$/i)
+{
+   my $g64 = readfileRaw($from);
+   my $txt = g64top64txt($g64);
+   my $scp = txt2scp($txt, $level);
+   writefileRaw($scp, $to);
+}
+elsif ($from =~ /\.d64$/i && $to =~ /\.scp$/i)
+{
+   my $txt = stddisk();
+   my $d64 = readfileRaw($from);
+   my $g64 = txttog64($txt, $d64, "1541");
+   my $txt = g64top64txt($g64);
+   my $scp = txt2scp($txt, $level);
+   writefileRaw($scp, $to);
+}
+elsif ($from =~ /\.d71$/i && $to =~ /\.scp$/i)
+{
+   my $txt = stddisk1571();
+   my $d64 = readfileRaw($from);
+   my $g64 = txttog64($txt, $d64, "1571");
+   my $txt = g64top64txt($g64);
+   my $scp = txt2scp($txt, $level);
+   writefileRaw($scp, $to);
+}
+elsif ($from eq "verify" &&  $to =~ /\.(([dg]64)|(txt))$/i )
+{
+   my $inp = readfileRaw($to);
+   if ($to =~ /.txt$/i)
+   {
+      $inp = readfile($to);
+      $inp = txttog64($inp, undef, "1541");
+      my $range = $level;
+      $range = "1..35" unless defined $range;
+      my $range2 = parseRange($range);
+      $inp = g64tod64($inp, $range2, $pass);
+   }
+   elsif ($to =~ /.g64$/i)
+   {
+      my $range = $level;
+      $range = "1..35" unless defined $range;
+      my $range2 = parseRange($range);
+      $inp = g64tod64($inp, $range2, $pass);
+   }
+   
+   verifyD64($inp);
+}
+elsif ($from eq "verify" &&  $to =~ /\.[dg]71$/i )
+{
+   my $inp = readfileRaw($to);
+   if ($to =~ /.g71$/i)
+   {
+      my $range = $level;
+      $range = "1..35" unless defined $range;
+      my $range2 = parseRange($range);
+      $inp = g64tod71($inp, $range2, $pass);
+   }
+   
+   verifyD71($inp);
 }
 else
 {
@@ -866,7 +1001,7 @@ sub writefileRaw
 
 sub g64totxt
 {
-   my ($g64, $level) = @_;
+   my ($g64, $level, $addMarkPositions) = @_;
    my $ret = "";
    
    my $signature = substr($g64, 0, 8);
@@ -876,6 +1011,8 @@ sub g64totxt
    
    my $notracks = unpack("C", substr($g64, 9, 1));
    my $tracksizeHdr = unpack("S", substr($g64, 0xA, 2));
+   
+   my $haveExtHeader = substr($g64, 12+8*$notracks, 4) eq "EXT\1";
    
    $ret .= "no-tracks $notracks\ntrack-size $tracksizeHdr\n";
    for (my $i=1; $i<$notracks; $i++)
@@ -918,10 +1055,36 @@ sub g64totxt
 	 }
       }
       
+      my $writeSplicePos = undef;
+      my $writeAreaSize = undef;
+      my $bitcellSize = undef;
+      my $trackFillValue = undef;
+      my $formatCode = undef;
+      my $formatExtension = undef;
+      
+      if ($haveExtHeader)
+      {
+         $writeSplicePos = unpack "V", substr($g64, 8*$notracks + 16*$i, 4);
+         $writeAreaSize = unpack "V", substr($g64, 8*$notracks + 16*$i + 4, 4);
+         $bitcellSize = unpack "V", substr($g64, 8*$notracks + 16*$i + 8, 4);
+         $trackFillValue = unpack "C", substr($g64, 8*$notracks + 16*$i + 12, 1);
+         $formatCode = unpack "C", substr($g64, 8*$notracks + 16*$i + 14, 1);
+         $formatExtension = unpack "C", substr($g64, 8*$notracks + 16*$i + 15, 1);
+      }
+
       my $trackRet = "track $track\n";
       if ($level == 0)
       {
          $trackRet .= "   ; length $trackSize\n";
+         if ($haveExtHeader)
+         {
+            $trackRet .= "   write-splice-position $writeSplicePos\n" if $writeSplicePos;
+            $trackRet .= "   write-area-size $writeAreaSize\n" if $writeAreaSize;
+            $trackRet .= "   bitcell-size $bitcellSize\n" if $bitcellSize;
+            $trackRet .= "   track-fill-value $trackFillValue\n" if $trackFillValue;
+            $trackRet .= "   format-code $formatCode\n";
+            $trackRet .= "   format-extension $formatExtension\n";
+         }
       	 if ($level eq "00")
       	 {
             my $trackContentBin = unpack("B*", $trackContent);
@@ -939,17 +1102,57 @@ sub g64totxt
 	 $tmp =~ s/ //g;
          my $trackBin = pack("H*", $tmp);
 	 my $trackContentBin = unpack("B*", $trackBin);
-	 
-         $tmp = parseTrack($trackContentBin, $speed, $level, 1);
+
+         my @markPositions = ();
+         push (@markPositions, @{$addMarkPositions->{$track} }) if defined $addMarkPositions->{$track};
+         push (@markPositions, { position => 0, command => "; position 0"}) if $level > 2;
+         
+         if ($haveExtHeader)
+         {
+            if ($writeSplicePos)
+            {
+            	my $tmp = { position => $writeSplicePos, command => "write-splice-position" };
+            	push (@markPositions, $tmp);
+            }
+            if ($writeAreaSize)
+            {
+            	my $tmpPos = ( $writeAreaSize+$writeSplicePos + length($trackContentBin) ) % $trackContentBin;
+            	my $tmp = { position => $tmpPos, command => "write-area-end" };
+            	push (@markPositions, $tmp);
+            }
+         }
+         
+         $tmp = parseTrack($trackContentBin, $speed, $level, 1, \@markPositions);
 	 unless (defined $tmp)
 	 {
+            if ($haveExtHeader)
+            {
+               $trackRet .= "   write-splice-position $writeSplicePos\n" if $writeSplicePos;
+               $trackRet .= "   write-area-size $writeAreaSize\n" if $writeAreaSize;
+               $trackRet .= "   bitcell-size $bitcellSize\n" if $bitcellSize;
+               $trackRet .= "   track-fill-value $trackFillValue\n" if $trackFillValue;
+               $trackRet .= "   format-code $formatCode\n";
+               $trackRet .= "   format-extension $formatExtension\n";
+            }
             $tmp =  "   speed $speed\n";
+            $tmp .= "   ; length $trackSize\n";
 	    $tmp .= "   begin-at 0\n   bytes$trackContentHex\n";
 	    $tmp .= "end-track\n\n";
 	 }
+	 else
+	 {
+            if ($haveExtHeader)
+            {
+               $trackRet .= "   bitcell-size $bitcellSize\n" if $bitcellSize;
+               $trackRet .= "   track-fill-value $trackFillValue\n" if $trackFillValue;
+               $trackRet .= "   format-code $formatCode\n";
+               $trackRet .= "   format-extension $formatExtension\n";
+            }
+
+            $trackRet .= "   ; length $trackSize\n";
+	    $trackRet .= $tmp;
+	 }
 	 
-         $trackRet .= "   ; length $trackSize\n";
-	 $trackRet .= $tmp;
       }
       
       $ret .= $trackRet;
@@ -965,6 +1168,7 @@ sub parseTrack
    my $speed = $_[1];
    my $mode = $_[2];
    my $normalize = $_[3];
+   my $markers = $_[4];
    
    my $ret;
    my $beginat;
@@ -1015,6 +1219,16 @@ sub parseTrack
       $speed = $speed x length($track);
    }
 
+   for my $marker (@$markers)
+   {
+      my $pos = $marker->{position};
+      $pos -= $beginat;
+      $pos += length($track) if $pos < 0;
+      $pos -= length($track) if $pos >= length($track);
+
+      $marker->{position} = $pos;
+   }
+
    $ret .= "   begin-at $beginat\n";
    
    my $trackPos = 0;
@@ -1031,6 +1245,16 @@ sub parseTrack
       $track =~ s/^(1+)//;
       $ret .= "   sync " . length($1) . "\n";
       $trackPos += length($1);
+      
+      for my $marker (@$markers)
+      {
+         next if $marker->{done};
+         next unless $trackPos >= $marker->{position};
+         $marker->{done} = 1;
+         my $delta = $marker->{position} - $trackPos;
+         my $cmd = $marker->{command};
+         $ret .= "   $cmd $delta\n";
+      }
 
       if ($track ne "" && $curspeed ne substr($speed, $trackPos, 1))
       {
@@ -1137,6 +1361,16 @@ sub parseTrack
             $trackPos += length($f);
             my $b = parseGCR($1);
 	    
+            for my $marker (@$markers)
+            {
+               next if $marker->{done};
+               next unless $trackPos >= $marker->{position};
+               $marker->{done} = 1;
+               my $delta = $marker->{position} - $trackPos;
+               my $cmd = $marker->{command};
+               $ret .= "   $cmd $delta\n";
+            }
+
 	    if ($i == 0)
 	    {
 	       $ret .= "   begin-checksum\n";
@@ -1359,7 +1593,19 @@ sub parseTrack
 	    my $f = $1;
             my $b = parseGCR($1);
 	    $trackPos += 5;
-	    
+
+            for my $marker (@$markers)
+            {
+               next if $marker->{done};
+               next unless $trackPos >= $marker->{position};
+               $marker->{done} = 1;
+               my $delta = $marker->{position} - $trackPos;
+               my $cmd = $marker->{command};
+	       $ret .= "      gcr$gcr\n" if $gcr;
+	       $gcr = "";
+               $ret .= "   $cmd $delta\n";
+            }
+
 	    if ($i < 256)
 	    {
 	       if ((defined $a) && (defined $b))
@@ -1438,19 +1684,49 @@ sub parseTrack
       
          while (length ($trackPart2) >= 8)
          {
-            $trackPart2 =~ s/^((.{8})+)//;
+            my $maxLen = length ($trackPart2);
+            for my $marker (@$markers)
+            {
+               next if $marker->{done};
+               next unless $trackPos < $marker->{position};
+               my $delta = $marker->{position} - $trackPos;
+               $maxLen = $delta if $maxLen > $delta;
+            }
+            my $maxBytes = int(($maxLen+7)/8);
+
+            $trackPart2 =~ s/^((.{8}){1,$maxBytes})//;
 	    $trackPos += length($1);
             my $trackBin = pack("B*", $1);
 	    my $trackContentHex = unpack("H*", $trackBin);
             $trackContentHex =~ s/(..)/ $1/gc;
 	    $ret .= "   bytes$trackContentHex\n";
 
+           for my $marker (@$markers)
+           {
+              next if $marker->{done};
+              next unless $trackPos >= $marker->{position};
+              $marker->{done} = 1;
+              my $delta = $marker->{position} - $trackPos;
+              my $cmd = $marker->{command};
+              $ret .= "   $cmd $delta\n";
+           }
          }
       
          $ret .= "   bits $trackPart2\n" if $trackPart2 ne '';
          $trackPos += length($trackPart2);
+
+         for my $marker (@$markers)
+         {
+            next if $marker->{done};
+            next unless $trackPos >= $marker->{position};
+            $marker->{done} = 1;
+            my $delta = $marker->{position} - $trackPos;
+            my $cmd = $marker->{command};
+            $ret .= "   $cmd $delta\n";
+         }
       }
       
+
       $track = $trackRest;
       
       $ret .= "\n";
@@ -1528,6 +1804,22 @@ sub txttog64
    my $checksumBlock = 0;
    my $checksum = 0;
    
+   my $haveExtension = 0;
+   my $writeSplicePos = undef;
+   my $writeAreaEnd = undef;
+   my $writeAreaSize = undef;
+   my $bitcellSize = undef;
+   my $trackFillValue = undef;
+   my $formatCode = undef;
+   my $formatExtension = undef;
+   
+   my @writeSplicePos = ();
+   my @writeAreaSize = ();
+   my @bitcellSize = ();
+   my @trackFillValue = ();
+   my @formatCode = ();
+   my @formatExtension = ();
+
    while ($line = <$file>)
    {
       chomp $line;
@@ -1553,6 +1845,13 @@ sub txttog64
 	 $curTrack = "";
 	 $beginat = 0;
 	 $checksumBlock = 0;
+         $writeSplicePos = undef;
+         $writeAreaEnd = undef;
+         $writeAreaSize = undef;
+         $bitcellSize = undef;
+         $trackFillValue = undef;
+         $formatCode = undef;
+         $formatExtension = undef;
       }
       elsif ($line eq "end-track")
       {
@@ -1576,6 +1875,62 @@ sub txttog64
 	 }
          $checksumBlock = 0;
 	 $speed = 4;
+	 
+	 if (defined $writeAreaEnd)
+	 {
+	    my $tmpwriteSplicePos = $writeSplicePos;
+	    $tmpwriteSplicePos = $beginat unless defined $tmpwriteSplicePos;
+            $writeAreaSize = $writeAreaEnd - $tmpwriteSplicePos;
+            $writeAreaSize += length($curTrack) if $writeAreaSize < 0;
+	 }
+
+	 if (defined $writeSplicePos)
+	 {
+            $writeSplicePos = ($writeSplicePos + $beginat + length($curTrack)) % length($curTrack);
+	 }
+	 
+	 $writeSplicePos = 0 unless defined $writeSplicePos;
+	 $writeAreaSize = 0 unless defined $writeAreaSize;
+	 $bitcellSize = 0 unless defined $bitcellSize;
+	 $trackFillValue = 0 unless defined $trackFillValue;
+	 $formatCode = 0 unless defined $formatCode;
+	 $formatExtension = 0 unless defined $formatExtension;
+	 
+         $writeSplicePos[$curTrackNo] = $writeSplicePos;
+         $writeAreaSize[$curTrackNo] = $writeAreaSize;
+         $bitcellSize[$curTrackNo] = $bitcellSize;
+         $trackFillValue[$curTrackNo] = $trackFillValue;
+         $formatCode[$curTrackNo] = $formatCode;
+         $formatExtension[$curTrackNo] = $formatExtension;
+      }
+      elsif ($line =~ /^write-splice-position (.*)$/)
+      {
+         $writeSplicePos = $1 + length($curTrack);
+         $haveExtension = 1;
+      }
+      elsif ($line =~ /^write-area-end (.*)$/)
+      {
+         $writeAreaEnd = $1 + length($curTrack); $haveExtension = 1;
+      }
+      elsif ($line =~ /^write-area-size (.*)$/)
+      {
+         $writeAreaSize = $1; $haveExtension = 1;
+      }
+      elsif ($line =~ /^bitcell-size (.*)$/)
+      {
+         $bitcellSize = $1; $haveExtension = 1;
+      }
+      elsif ($line =~ /^track-fill-value (.*)$/)
+      {
+         $trackFillValue = $1; $haveExtension = 1;
+      }
+      elsif ($line =~ /^format-code (.*)$/)
+      {
+         $formatCode = $1; $haveExtension = 1;
+      }
+      elsif ($line =~ /^format-extension (.*)$/)
+      {
+         $formatExtension = $1; $haveExtension = 1;
       }
       elsif ($line =~ /^speed (.*)$/)
       {
@@ -1812,9 +2167,27 @@ sub txttog64
    $g64 .= "\0\0\0\0" x $noTracks;
    $g64 .= "\0\0\0\0" x $noTracks;
    
+   if ($haveExtension)
+   {
+      $g64 .= "EXT\1";
+      $g64 .= "\0" x (16*$noTracks);
+   }
+
    for (my $i=1; $i<$noTracks; $i++)
    {
       next unless defined $tracks[$i];
+      
+      if ($haveExtension)
+      {
+         my $offset = 8*$noTracks + 16*$i;
+         substr($g64, $offset+0, 4) = pack "V", $writeSplicePos[$i];
+         substr($g64, $offset+4, 4) = pack "V", $writeAreaSize[$i];
+         substr($g64, $offset+8, 4) = pack "V", $bitcellSize[$i];
+         substr($g64, $offset+12, 1) = pack "C", $trackFillValue[$i];
+         substr($g64, $offset+14, 1) = pack "C", $formatCode[$i];
+         substr($g64, $offset+15, 1) = pack "C", $formatExtension[$i];
+      }
+      
       my $trackSpeed = $tracks[$i]->[0];
       my $trackContent = $tracks[$i]->[1];
 
@@ -2363,6 +2736,8 @@ sub g64top64txt
    
    my $notracks = unpack("C", substr($g64, 9, 1));
    my $tracksizeHdr = unpack("S", substr($g64, 0xA, 2));
+
+   my $haveExtHeader = substr($g64, 12+8*$notracks, 4) eq "EXT\1";
    
    $ret .= "sides 2\n" if $notracks >= 86;
    
@@ -2429,6 +2804,9 @@ sub g64top64txt
       my $factor = (5*$num3/307692)+(5*$num2/285714)+(5*$num1/266667)+(5*$num0/250000);
       my $fluxPos = 1;      
 
+      my $writeSplicePos = 0;
+      $writeSplicePos = unpack "V", substr($g64, 8*$notracks + 16*$i, 4) if $haveExtHeader;
+
       for (my $j=0; $j<8*$trackSize; $j++)
       {
          my $char = substr($trackContentBin, $j, 1);
@@ -2438,6 +2816,12 @@ sub g64top64txt
             $ret .= "   flux $fluxPos\n";
 	    # push (@{ $p64data{$p64track} }, $fluxPos);
 	 }
+	 
+	 if ($writeSplicePos && $j == $writeSplicePos)
+	 {
+            $ret .= "   write-splice-pos $fluxPos\n";
+	 }
+	 
 	 if ($sped eq '0')
 	 {
 	    $fluxPos += ( 16000000 / 250000 ) / $factor;
@@ -3086,6 +3470,7 @@ sub padbitstream
    my $bits = $_[0];
    my $orgBits = $bits;
    $bits =~ s/_//g;
+   $bits =~ s/\///g;
    $bits =~ s/A//g;
    $bits =~ s/B//g;
    $bits =~ s/C//g;
@@ -3141,6 +3526,13 @@ sub padbitstream
       my $c2 = substr($bits, $pos2, 1);
       
       if ($c1 eq "_")
+      {
+      	 $ret .= $c1;
+      	 $pos1++;
+      	 next;
+      }
+      
+      if ($c1 eq "/")
       {
       	 $ret .= $c1;
       	 $pos1++;
@@ -3212,9 +3604,11 @@ sub parseP64txt
    $ret{writeprotect} = 0;
    $ret{sides} = 1;
    $ret{tracks} = [];
+   $ret{haveWriteSplicePos} = 0;
    my $tracks = $ret{tracks};
    my $line;
    my $flux;
+   my $curTrack;
    
    open (my $file, "<", \$p64txt) or die;
    while ($line = <$file>)
@@ -3241,13 +3635,21 @@ sub parseP64txt
       	my $mytrack = {};
       	$mytrack->{track} = $1;
       	$mytrack->{flux} = [];
+      	$mytrack->{writeSplicePos} = undef;
       	$flux = $mytrack->{flux};
+      	$curTrack = $mytrack;
       	
       	push (@$tracks, $mytrack)
       }
       elsif ($line =~  /^flux ([0-9]+(?:\.[0-9]+)?)$/ )
       {
       	push (@$flux, $1);
+      }
+      elsif ($line =~  /^write-splice-pos ([0-9]+(?:\.[0-9]+)?)$/ )
+      {
+      	$curTrack->{writeSplicePos} = $1 - 0;
+      	$ret{haveWriteSplicePos} = 1;
+      	
       }
       else
       {
@@ -3356,7 +3758,7 @@ sub parseRotationSpeedParameter
    
    for my $range (@range)
    {
-      if ( $range =~ /^ad([0-2])$/i)
+      if ( $range =~ /^ad([0-3])$/i)
       {
       	$ret{decoderalgorithm} = $1;
       }
@@ -3431,7 +3833,7 @@ sub parseRotationSpeedParameter
       	# Parameter: Start, End, Incr, "rs", val
       	my ($start, $end, $incr, $rs, $val) = ($1, $2, $3, $4, $5);
       	
-      	$incr = 1 unless defined $end;
+      	$incr = 1 unless defined $incr;
       	$end = $start unless defined $end;
       	my $is8250 = 0;
       	if ($incr eq "8250")
@@ -3469,6 +3871,44 @@ sub parseRotationSpeedParameter
            }
         }
       }
+      elsif ( $range =~ /^([0-9]+(?:\.5)?)(?:\.\.([0-9]+(?:\.5)?))?(?:\/([0-9]+(?:\.5)))?:([0-9]+(?:\.5)?)(?:\.\.([0-9]+(?:\.5)?))?(?:\/([0-9]+(?:\.5)))?=s([0-9]+)$/i)
+      {
+      	my ($start, $end, $incr, $startS, $endS, $incrS, $val) = ($1, $2, $3, $4, $5, $6, $7);
+      	
+      	$incr = 1 unless defined $end;
+      	$end = $start unless defined $end;
+      	
+      	$incrS = 1 unless defined $endS;
+      	$endS = $startS unless defined $endS;
+
+      	unless (defined $incr)
+      	{
+      	   my $d = $end-$start;
+      	   $d -= int $d;
+      	   if (abs($d) < 0.1)
+      	   {
+      	      $incr=1;
+      	   }
+      	   else
+      	   {
+      	      $incr=0.5;
+      	   }
+      	}
+      	unless (defined $incrS)
+      	{
+      	   $incrS=1;
+      	}
+      	$incr-=0;
+      	$incrS-=0;
+      	
+      	for (my $i=$start; $i<=$end; $i+=$incr)
+      	{
+      	   for (my $j=$startS; $j<=$endS; $j+=$incrS)
+      	   {
+           	$ret{sectorspeed}{$i}{$j} = $val unless exists $ret{sectorspeed}{$i}{$j};
+           }
+        }
+      }
       elsif ( $range =~ /^([0-9]+(?:\.5)?)=r([0-9]+)\.\.([0-9]+)$/i)
       {
       	my ($track, $start, $end) = ($1, $2, $3);
@@ -3486,9 +3926,17 @@ sub parseRotationSpeedParameter
 
 sub fluxtobitstreamV2
 {
-   my ($flux, $speed, $param,$track ) = @_;
+   my $ret = fluxtobitstreamV3(@_);
+   $ret->[0];
+}
+
+sub fluxtobitstreamV3
+{
+   my ($flux, $speed, $param,$track, $writeSplicePos ) = @_;
+
    my $rpm = $param->{rpm};
    my $bits = "";
+   my $syncCnt = 0;
    
    my $pulseactive = 0;
    my $clock = 0;
@@ -3496,16 +3944,36 @@ sub fluxtobitstreamV2
    my $tcarry = 0;
    my $pulseDuration = 40;
    my $isSync = 0;
+   my $lastSyncTime = 0;
+   my $lastSyncPos = 0;
+   my $tme = 0;
+   my $writeSpliceDone = !defined $writeSplicePos;
+   my $pos = 0;
+   my $bitsFromLastSync = 10000;
+
+   $writeSplicePos *= 3200000* 300 / $rpm if defined $writeSplicePos;
+   
+   my %remarks = ();
+   
    $pulseDuration = 25 if $speed >= 4; # Exact value unknown
    
    my $isMultispeed = $speed eq "m";
    
-   my $timePerBit = (4 - 0.25 * $speed)/1000000;
+###   my $timePerBit = (4 - 0.25 * $speed)/1000000;
    
    for (my $i=-@$flux; $i<@$flux; $i++)
    {
-      $bits = "" if $i == 0;
-      $bits .= chr(65+$speed) if $isMultispeed && $i == 0;
+      if ($i == 0)
+      {
+         $bits = "";
+         $syncCnt = 0;
+         $pos = 0;
+         %remarks = ();
+         $bits .= chr(65+$speed) if $isMultispeed;
+         $writeSpliceDone = !defined $writeSplicePos;
+         $writeSplicePos += $tme if defined $writeSplicePos;
+         print "Debg: $tme\n";
+      }
       my $tmeToFlux = $flux->[$i] / 5 * 300 / $rpm + $tcarry;
 
       my $delay = 0;
@@ -3528,47 +3996,82 @@ sub fluxtobitstreamV2
             
             if (($counter & 3) == 2)
             {
+                $bitsFromLastSync++;
                 if ($counter == 2)
                 {
                    $bits .= "1";
                    $isSync++;
                    
+                   $syncCnt++ if $isSync == 10;
+                   $bitsFromLastSync = 10000 if $isSync == 10;
+
                    if ($isMultispeed && $isSync == 10)
                    {
                    	my $ii = $i;
                    	$ii += @$flux if $ii < 0;
-                   	$speed = doGetSpeedZoneMuultitrack([@$flux, @$flux], $ii, $param, $track);
+                   	$speed = doGetSpeedZoneMuultitrack([@$flux, @$flux], $ii, $param, $track, $syncCnt);
                    	$bits .= chr(65+$speed);
                    }
                 }
                 else
                 {
                    $bits .= "0";
+                   if ($isSync >= 10)
+                   {
+                   	$lastSyncTime = $tme;
+                   	$lastSyncPos = $pos;
+                   	$bitsFromLastSync = 0;
+                   }
                    $isSync = 0;
                 }
+
+               if ($bitsFromLastSync == 2600)
+               {
+                  $remarks{$lastSyncPos} = "; Time reading block #". $syncCnt .": " . (($tme-$lastSyncTime)/16) . "탎, per bit ". (($tme-$lastSyncTime)/16/2600). "탎 # ";
+               }
+               
+               if ($bitsFromLastSync == 80 && !defined $remarks{$lastSyncPos})
+               {
+                  $remarks{$lastSyncPos} = "; Time reading block #". $syncCnt .": " . (($tme-$lastSyncTime)/16) . "탎, per bit ". (($tme-$lastSyncTime)/16/80). "탎 # ";
+               }
+
+               $pos++;
             }
          }
          $delay ++;
          $clock ++;
+         if (!$writeSpliceDone  && $tme >= $writeSplicePos)
+         {
+            $writeSpliceDone = 1;
+            $bits .= "/";
+         }
+         $tme++;
       } while (6.25e-8 * $delay < $tmeToFlux);
       $bits .= "_";
       
-      $tcarry = $tmeToFlux - ($delay - 1) * 6.25e-8;
+      $tcarry = $tmeToFlux - ($delay - 0) * 6.25e-8;
+   }
+   
+   my @remarks = ();
+   for my $k (keys(%remarks))
+   {
+      push (@remarks, { position => $k, command => $remarks{$k}} );
    }
 
-   $bits;   
+   [$bits, \@remarks ];
 }
 
 sub fluxtobitstream
 {
-   my ($flux, $speed, $param, $track) = @_;
-   
+   my ($flux, $speed, $param, $track, $writeSplicePos) = @_;
+
    my $ret;
    my $alg = $param->{decoderalgorithm};
    my $rpm = $param->{rpm};
    
-   $alg = 2 if $speed eq "m";
+   $alg = 3 if $speed eq "m";
 
+   $ret = fluxtobitstreamV3($flux, $speed, $param, $track, $writeSplicePos) if $alg == 3;
    $ret = fluxtobitstreamV2($flux, $speed, $param, $track) if $alg == 2;
    $ret = fluxtobitstreamV1($flux, $speed, $rpm) if $alg == 1;
    $ret = fluxtobitstreamV1($flux, 1.5, $rpm) if $alg == 0;
@@ -3696,6 +4199,7 @@ sub findPluxPosition
         	$fluxNo++;
         	next;
         }
+
         if ($cO eq "2" && $cF eq "1")
         {
         	$posO++;
@@ -3877,9 +4381,11 @@ sub doGetSpeedZone
 
 sub doGetSpeedZoneMuultitrack
 {
-   my ($flux, $offset, $spec, $track) = @_;
+   my ($flux, $offset, $spec, $track, $syncno) = @_;
    
-   my $speed;
+   my $speed; # fixme123
+   return $spec->{sectorspeed}{$track}{$syncno} if defined $spec->{sectorspeed}{$track}{$syncno};
+   
 # Does not work as hoped:
 #   if ($spec->{sppedzonealgorithm} == 1)
 #   {
@@ -3937,11 +4443,12 @@ sub findEndOfFluxPart
 sub getTrackFromSpeedAndBitstreeam
 {
    my ($speed, $bitstream) = @_;
-   my $ret;
+   my $ret = "";
    
-   if ($speed eq "m")
+   if ($speed eq "m" || $bitstream =~ m!/! )
    {
-   	my @tmp = split(/([ABCD])/, $bitstream);
+        $ret .= "   speed $speed\n" if $speed ne "m";
+   	my @tmp = split(/([\/ABCD])/, $bitstream);
    	for my $i (@tmp)
    	{
    	   if ($i eq "A")
@@ -3960,6 +4467,10 @@ sub getTrackFromSpeedAndBitstreeam
    	   {
    	   	$ret .= "   speed 3\n";
    	   }
+   	   elsif ($i eq "/")
+   	   {
+   	   	$ret .= "   write-splice-position 0\n";
+   	   }
    	   else
    	   {
                $ret .= "   bits $i\n";
@@ -3976,9 +4487,11 @@ sub getTrackFromSpeedAndBitstreeam
 
 sub txt2scp
 {
-   my ($txt,) = @_;
+   my ($txt, $tlen) = @_;
    my $p64 = parseP64txt($txt);
-   
+   $tlen = 6666666 unless defined $tlen;
+   $tlen = int(2.4e9/$tlen) if $tlen < 400;
+
    my $head = 0;
    my $start = undef;
    my $end = undef;
@@ -3986,6 +4499,7 @@ sub txt2scp
    
    my $haveHead0 = 0;
    my $haveHead1 = 0;
+   my $haveWriteSplicePos = $p64->{haveWriteSplicePos};
    
    for my $p64track ( @{$p64->{tracks}})
    {
@@ -4034,9 +4548,9 @@ sub txt2scp
    }
    my $rawhead = ($head+1)%3;
 
-   my $header = "\x" x 0x2b0;
+   my $header = "\x00" x 0x2b0;
    substr($header, 0, 3) = "SCP";
-   substr($header, 3, 1) = "\x31";
+   substr($header, 3, 1) = "\x32";
    substr($header, 4, 1) = "\0"; # FIXME: what if not commodore?
    substr($header, 5, 1) = "\x3";
    substr($header, 6, 1) = chr($rawstart);
@@ -4046,11 +4560,22 @@ sub txt2scp
    substr($header,10, 1) = chr($rawhead);
    substr($header,11, 1) = "\0";
    
+   if ($haveWriteSplicePos)
+   {
+      my $wspHeader = "\x00" x 676;
+      substr($wspHeader, 0, 4) = "WSP\1";
+      $header .= $wspHeader;
+   }
+   
    for my $p64track ( @{$p64->{tracks}})
    {
+        my $writeSplicePos = $p64track->{writeSplicePos};
+        $writeSplicePos /= 3200000 if defined $writeSplicePos;
+        
    	my $Flux = normalizeP64Flux ($p64track->{flux});
-   	
+
    	my $trackno = $p64track->{track};
+
    	my $side = 0;
    	if ($trackno >= 128)
    	{
@@ -4068,7 +4593,12 @@ sub txt2scp
    	   $rawTrack = ($trackno-1) * 4 + $side;
    	}
    	
-   	my $trkhdr = "\0" x 0x28;
+        if ($haveWriteSplicePos && defined $writeSplicePos)
+        {
+           substr($header, 0x2b4+4*$rawTrack, 4) = pack "V", ($writeSplicePos * $tlen);
+        }
+
+	my $trkhdr = "\0" x 0x28;
    	substr($trkhdr,  0, 3) = "TRK";
    	substr($trkhdr,  3, 1) = chr($rawTrack);
    	
@@ -4076,7 +4606,7 @@ sub txt2scp
         my $carry = 0;
         for my $f (@$Flux)
         {
-           my $val = $f * 6666666 + $carry;;
+           my $val = $f * $tlen + $carry;;
            my $ival = int $val;
            $carry = $val - $ival;
            
@@ -4092,7 +4622,7 @@ sub txt2scp
         my $trkPos = 4;
         for (my $r = 0; $r<3; $r++)
         {
-           substr($trkhdr, $trkPos, 4) = pack "V", 6666666;
+           substr($trkhdr, $trkPos, 4) = pack "V", $tlen;
            substr($trkhdr, $trkPos+4, 4) = pack "V", length($data)/2;
            substr($trkhdr, $trkPos+8, 4) = pack "V", length($trkhdr);
            $trkhdr .= $data;
@@ -4113,3 +4643,102 @@ sub txt2scp
   
    $header;
 }
+
+sub verifyD64
+{
+   my $d64 = $_[0];
+   my $size = length($d64);
+
+   if ($size % 256 == 0)
+   {
+      print "This d64 does not contain an error map\n";
+      return;
+   }
+   
+   unless ($size % 257 == 0)
+   {
+      print "This d64 is invalid\n";
+      return;
+   }
+   my $start = ($size/257)*256;
+
+   my $t = 1;
+   my $s = 0;
+   
+   for (my $i=0; $i < $size / 257; $i++)
+   {
+      my $err = ord(substr($d64, $start+$i, 1));
+      if ($err == 0)
+      {
+         print "Track $t sector $s should be 1, not 0.\n";
+      }
+      elsif ($err > 1)
+      {
+         print "Track $t sector $s has error $err.\n";
+      	
+      }
+   	
+      my $ns = 21;
+      $ns = 19 if $t >= 18;
+      $ns = 18 if $t >= 25;
+      $ns = 17 if $t >= 31;
+
+      $s++;
+      if ($s == $ns)
+      {
+      	 $s = 0;
+      	 $t++;
+      }
+   }
+}
+
+sub verifyD71
+{
+   my $d64 = $_[0];
+   my $size = length($d64);
+
+   if ($size % 256 == 0)
+   {
+      print "This d64 does not contain an error map\n";
+      return;
+   }
+   
+   unless ($size % 257 == 0)
+   {
+      print "This d64 is invalid\n";
+      return;
+   }
+   my $start = ($size/257)*256;
+
+   my $t = 1;
+   my $s = 0;
+   
+   for (my $i=0; $i < $size / 257; $i++)
+   {
+      my $err = ord(substr($d64, $start+$i, 1));
+      if ($err == 0)
+      {
+         print "Track $t sector $s should be 1, not 0.\n";
+      }
+      elsif ($err > 1)
+      {
+         print "Track $t sector $s has error $err.\n";
+      	
+      }
+   	
+      my $ns = 21;
+      my $t2 = $t;
+      $t2 -= 35 if $t2 > 35;
+      $ns = 19 if $t2 >= 18;
+      $ns = 18 if $t2 >= 25;
+      $ns = 17 if $t2 >= 31;
+
+      $s++;
+      if ($s == $ns)
+      {
+      	 $s = 0;
+      	 $t++;
+      }
+   }
+}
+
