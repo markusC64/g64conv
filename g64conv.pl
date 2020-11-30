@@ -4564,7 +4564,7 @@ sub txt2scp
    {
       my $wspHeader = "\x00" x 692;
       substr($wspHeader, 0, 4) = "EXTS";
-      substr($wspHeader, 4, 4) = pack "V", 680;
+      substr($wspHeader, 4, 4) = pack "V", 684;
       substr($wspHeader, 8, 4) = "WRSP";
       substr($wspHeader, 12, 4) = pack "V", 676;
 
