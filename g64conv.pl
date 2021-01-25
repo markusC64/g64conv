@@ -87,6 +87,7 @@ if (@ARGV < 2)
        "          d500        sets maximum delta in rotation detection\n".
        "          v250        sets flux range to verify rotation\n".
        "          ad1 or ad2  choose which algorithm to use for decoding\n".
+       "          ad3         like ad2 but with more comments\n".
        "          rpm300      sets the decoders rpm\n".
        "          scpside0    sets side to process in case of scp file\n".
        "                      0=first, 1=secons, 2=bith\n".
@@ -211,7 +212,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.g((64)|(71))$/i)
          my $Flux = normalizeP64Flux ($trackData->{flux});
 
          my $speed = getSpeedZone($Flux, $trackNo+128*$side, $level);
-         my $bitstream = fluxtobitstream($Flux, $speed, $level, $trackNo+128*$side, $writeSplicePos);
+         my $bitstream = fluxtobitstream($Flux, $speed, $level, $trackNo+128*$side, 1, $writeSplicePos);
          if (ref $bitstream)
          {
             $bitstream = $bitstream->[0];
@@ -317,7 +318,7 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.txt$/i)
      else
      {
         my $speed = getSpeedZone($Flux, $trackNo, $pass);
-        my $bitstream = fluxtobitstream($Flux, $speed, $pass, $trackNo);
+        my $bitstream = fluxtobitstream($Flux, $speed, $pass, $trackNo, $level);
         if (ref $bitstream)
         {
            $addMarkPositionsAll->{$trackNo} = $bitstream->[1];
@@ -364,7 +365,7 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.g64$/i)
      $Flux = reverseFlux($Flux) if $side == 1;
 
      my $speed = getSpeedZone($Flux, $trackNo, $level);
-     my $bitstream = fluxtobitstream($Flux, $speed, $level, $trackNo);
+     my $bitstream = fluxtobitstream($Flux, $speed, $level, $trackNo, 1);
      my $addMarkPositions = undef;
      if (ref $bitstream)
      {
@@ -433,7 +434,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.txt$/i)
      else
      {
         my $speed = getSpeedZone($Flux, $trackNo+128*$side, $pass);
-        my $bitstream = fluxtobitstream($Flux, $speed, $pass, $trackNo+128*$side);
+        my $bitstream = fluxtobitstream($Flux, $speed, $pass, $trackNo+128*$side, $level);
         if (ref $bitstream)
         {
            $addMarkPositionsAll->{$trackNo+42*$side} = $bitstream->[1];
@@ -495,7 +496,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.g((64)|(71))$/i)
      $Flux = reverseFlux($Flux) if $side == 1;
 
      my $speed = getSpeedZone($Flux, $trackNo+128*$side, $level);
-     my $bitstream = fluxtobitstream($Flux, $speed, $level, $trackNo+128*$side);
+     my $bitstream = fluxtobitstream($Flux, $speed, $level, $trackNo+128*$side, 1);
      my $addMarkPositions = undef;
      if (ref $bitstream)
      {
@@ -557,7 +558,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.txt$/i)
          my $Flux = normalizeP64Flux ($trackData->{flux});
 
          my $speed = getSpeedZone($Flux, $trackNo+128*$side, $pass);
-         my $bitstream = fluxtobitstream($Flux, $speed, $pass, $trackNo+128*$side, $writeSplicePos);
+         my $bitstream = fluxtobitstream($Flux, $speed, $pass, $trackNo+128*$side, $level, $writeSplicePos);
          if (ref $bitstream)
          {
             $addMarkPositionsAll->{$trackNo+42*$side} = $bitstream->[1];
@@ -653,7 +654,7 @@ elsif ($from eq "align" &&  $to =~ /\.txt$/i && $level =~ /\.txt$/i)
    	
    	my $Flux = normalizeP64Flux ($p64track->{flux});
    	my $speed = getSpeedZone($Flux, $trackno, $par);
-   	my $bitstream = fluxtobitstream($Flux, $speed, $par, $trackno);
+   	my $bitstream = fluxtobitstream($Flux, $speed, $par, $trackno, 1);
         my $addMarkPositions = undef;
         if (ref $bitstream)
         {
@@ -771,7 +772,7 @@ elsif ($from =~ /\.scp$/i && $to =~ /\.txt$/i)
      else
      {
         my $speed = getSpeedZone($Flux, $trackNo, $pass);
-        my $bitstream = fluxtobitstream($Flux, $speed, $pass, $trackNo+128*$side);
+        my $bitstream = fluxtobitstream($Flux, $speed, $pass, $trackNo+128*$side, $level);
         if (ref $bitstream)
         {
            $addMarkPositionsAll->{$trackNo+42*$side} = $bitstream->[1];
@@ -853,7 +854,7 @@ elsif ($from =~ /.scp$/i && $to =~ /\.g((64)|(71))$/i)
      $Flux = reverseFlux($Flux) if $sideToProcess == 1;
 
         my $speed = getSpeedZone($Flux, $trackNo, $level);
-        my $bitstream = fluxtobitstream($Flux, $speed, $level, $trackNo+128*$side);
+        my $bitstream = fluxtobitstream($Flux, $speed, $level, $trackNo+128*$side, 1);
         my $addMarkPositions = undef;
         if (ref $bitstream)
         {
@@ -949,6 +950,34 @@ elsif ($from eq "verify" &&  $to =~ /\.[dg]71$/i )
    }
    
    verifyD71($inp);
+}
+elsif ($from eq "info" &&  $to =~ /\.scp$/i )
+{
+  $level = parseRotationSpeedParameter($level);
+
+  my $scp = readscp($to);
+  my @tracks = sort { $a <=> $b } keys %{ $scp->{tracks} };
+  my $isDoubleStep = $tracks[-1] < 90;
+
+  for my $rawtrack (@tracks)
+  {
+     my $trackNo;
+     if ($isDoubleStep)
+     {
+        $trackNo = int($rawtrack/2) + 1;
+     }
+     else
+     {
+        $trackNo = int($rawtrack/2)/2 + 1;
+     }
+     my $side = $rawtrack & 1;
+     
+     my $fluxRaw = extractTrackFromScp($scp, $rawtrack);
+     next unless defined $fluxRaw;
+     my $fluxMetadata = extractRotation($fluxRaw, $level, $trackNo+128*$side);
+     my $rpm = 2.4e9/$fluxMetadata->{fluxSum};
+     print "      FluxSUm=" . $fluxMetadata->{fluxSum} . ", rpm=$rpm\n";
+  }
 }
 else
 {
@@ -1214,7 +1243,7 @@ sub parseTrack
    }
    else
    {
-      $ret  = "   speed $speed\n";
+      $ret  = "   speed $speed\n" if $speed ne "x";
       $curspeed = $speed;
       $speed = $speed x length($track);
    }
@@ -1229,7 +1258,7 @@ sub parseTrack
       $marker->{position} = $pos;
    }
 
-   $ret .= "   begin-at $beginat\n";
+   $ret .= "   begin-at $beginat\n" if defined $beginat;
    
    my $trackPos = 0;
 
@@ -1253,7 +1282,14 @@ sub parseTrack
          $marker->{done} = 1;
          my $delta = $marker->{position} - $trackPos;
          my $cmd = $marker->{command};
-         $ret .= "   $cmd $delta\n";
+         if ("\n" eq substr $cmd, -1)
+         {
+            $ret .= $cmd;
+         }
+         else
+         {
+            $ret .= "   $cmd $delta\n";
+         }
       }
 
       if ($track ne "" && $curspeed ne substr($speed, $trackPos, 1))
@@ -1368,7 +1404,14 @@ sub parseTrack
                $marker->{done} = 1;
                my $delta = $marker->{position} - $trackPos;
                my $cmd = $marker->{command};
-               $ret .= "   $cmd $delta\n";
+               if ("\n" eq substr $cmd, -1)
+               {
+                  $ret .= $cmd;
+               }
+               else
+               {
+                  $ret .= "   $cmd $delta\n";
+               }
             }
 
 	    if ($i == 0)
@@ -1603,7 +1646,14 @@ sub parseTrack
                my $cmd = $marker->{command};
 	       $ret .= "      gcr$gcr\n" if $gcr;
 	       $gcr = "";
-               $ret .= "   $cmd $delta\n";
+               if ("\n" eq substr $cmd, -1)
+               {
+                  $ret .= $cmd;
+               }
+               else
+               {
+                  $ret .= "   $cmd $delta\n";
+               }
             }
 
 	    if ($i < 256)
@@ -1708,7 +1758,14 @@ sub parseTrack
               $marker->{done} = 1;
               my $delta = $marker->{position} - $trackPos;
               my $cmd = $marker->{command};
-              $ret .= "   $cmd $delta\n";
+               if ("\n" eq substr $cmd, -1)
+               {
+                  $ret .= $cmd;
+               }
+               else
+               {
+                  $ret .= "   $cmd $delta\n";
+               }
            }
          }
       
@@ -1722,7 +1779,14 @@ sub parseTrack
             $marker->{done} = 1;
             my $delta = $marker->{position} - $trackPos;
             my $cmd = $marker->{command};
-            $ret .= "   $cmd $delta\n";
+               if ("\n" eq substr $cmd, -1)
+               {
+                  $ret .= $cmd;
+               }
+               else
+               {
+                  $ret .= "   $cmd $delta\n";
+               }
          }
       }
       
@@ -2228,7 +2292,7 @@ sub txttog64
 	    }
 	    else
 	    {
-	       die "FIXME: speed not aligned\n".$tmp;
+	       die "speed not aligned\n".$tmp;
 	    }
 	 }
 	 $tmp = pack("L", length($g64));
@@ -3210,8 +3274,11 @@ sub parseKryofluxRawFile
    }
    
    my %ret;
-   $ret{sck} = $sck;
-   $ret{ick} = $ick;
+   $ret{sck} = 24027428.5714285;
+   $ret{ick} = 3003428.5714285625;
+   print "   Warning: Stream does not contain values for sck or ick\n" if !defined($sck) || !defined($ick);
+   $ret{sck} = $sck if defined $sck;
+   $ret{ick} = $ick if defined $ick;
    $ret{flux} = \@res;
    $ret{indicies} = \@indicies;
    
@@ -3828,7 +3895,7 @@ sub parseRotationSpeedParameter
       {
             $ret{scpside} = $1;
       }
-      elsif ( $range =~ /^([0-9]+(?:\.5)?)(?:\.\.([0-9]+(?:\.5)?))?(?:\/([0-9]+(?:\.5)))?=([rs])(m|[0-9]+)$/i)
+      elsif ( $range =~ /^([0-9]+(?:\.5)?)(?:\.\.([0-9]+(?:\.5)?))?(?:\/([0-9]+(?:\.5)))?=([rs])(m|a|[0-9]+)$/i)
       {
       	# Parameter: Start, End, Incr, "rs", val
       	my ($start, $end, $incr, $rs, $val) = ($1, $2, $3, $4, $5);
@@ -3932,7 +3999,7 @@ sub fluxtobitstreamV2
 
 sub fluxtobitstreamV3
 {
-   my ($flux, $speed, $param,$track, $writeSplicePos ) = @_;
+   my ($flux, $speed, $param,$track, $level, $writeSplicePos ) = @_;
 
    my $rpm = $param->{rpm};
    my $bits = "";
@@ -3957,7 +4024,8 @@ sub fluxtobitstreamV3
    
    $pulseDuration = 25 if $speed >= 4; # Exact value unknown
    
-   my $isMultispeed = $speed eq "m";
+   my $isMultispeed = $speed eq "m" || $speed eq "a";
+   my $allSpeeds = $speed eq "a";
    
 ###   my $timePerBit = (4 - 0.25 * $speed)/1000000;
    
@@ -3972,7 +4040,6 @@ sub fluxtobitstreamV3
          $bits .= chr(65+$speed) if $isMultispeed;
          $writeSpliceDone = !defined $writeSplicePos;
          $writeSplicePos += $tme if defined $writeSplicePos;
-         print "Debg: $tme\n";
       }
       my $tmeToFlux = $flux->[$i] / 5 * 300 / $rpm + $tcarry;
 
@@ -4010,6 +4077,34 @@ sub fluxtobitstreamV3
                    	my $ii = $i;
                    	$ii += @$flux if $ii < 0;
                    	$speed = doGetSpeedZoneMuultitrack([@$flux, @$flux], $ii, $param, $track, $syncCnt);
+                   	
+                        if ($allSpeeds)
+                        {
+                   	   my $tmpFlux = [@$flux, @$flux];
+                   	   my @tmpflux = @$tmpFlux;
+                   	   my $end = findEndOfFluxPart($tmpFlux, $ii);
+      			   if (defined $end)
+      			   {
+         		      my @tmpFlux = @tmpflux[$ii..$end];
+         		      my $cmt = "";
+         		      for my $speed2 (0..3)
+         		      {
+         		      	 next if $speed == $speed2;
+         		      	
+         		         my $tmp2 = fluxtobitstreamV3(\@tmpFlux, $speed2, $param,$track,$level,undef);
+         		         my $tmpStr = $tmp2->[0];
+         		         $tmpStr =~ s/_//g;
+         		         $tmpStr = parseTrack($tmpStr, $speed2, $level, 0, $tmp2->[1]);
+         		         $tmpStr =~ s/^end-track//m;
+         		         $tmpStr =~ s/\n\n+$/\n/s;
+         		         $tmpStr =~ s/^/      ; /mg;
+         		         $cmt .= "; ; Decoded with alternative speed\n";
+         		         $cmt .= $tmpStr;
+         		      }
+         		      $remarks{$pos} = $cmt;
+      			    }
+      		        }
+                   	
                    	$bits .= chr(65+$speed);
                    }
                 }
@@ -4063,15 +4158,16 @@ sub fluxtobitstreamV3
 
 sub fluxtobitstream
 {
-   my ($flux, $speed, $param, $track, $writeSplicePos) = @_;
+   my ($flux, $speed, $param, $track, $level, $writeSplicePos) = @_;
 
    my $ret;
    my $alg = $param->{decoderalgorithm};
    my $rpm = $param->{rpm};
    
    $alg = 3 if $speed eq "m";
+   $alg = 3 if $speed eq "a";
 
-   $ret = fluxtobitstreamV3($flux, $speed, $param, $track, $writeSplicePos) if $alg == 3;
+   $ret = fluxtobitstreamV3($flux, $speed, $param, $track, $level, $writeSplicePos) if $alg == 3;
    $ret = fluxtobitstreamV2($flux, $speed, $param, $track) if $alg == 2;
    $ret = fluxtobitstreamV1($flux, $speed, $rpm) if $alg == 1;
    $ret = fluxtobitstreamV1($flux, 1.5, $rpm) if $alg == 0;
@@ -4383,7 +4479,6 @@ sub doGetSpeedZoneMuultitrack
 {
    my ($flux, $offset, $spec, $track, $syncno) = @_;
    
-   my $speed; # fixme123
    return $spec->{sectorspeed}{$track}{$syncno} if defined $spec->{sectorspeed}{$track}{$syncno};
    
 # Does not work as hoped:
@@ -4397,7 +4492,7 @@ sub doGetSpeedZoneMuultitrack
 #         $speed = getSpeedZone1(\@tmpFlux);
 #      }
 #   }
-   $speed = getSpeedZone2($flux, $offset) if $spec->{sppedzonealgorithm} == 2 || !defined($speed);
+   my $speed = getSpeedZone2($flux, $offset); #  if $spec->{sppedzonealgorithm} == 2;
    return undef unless defined $speed;
    return $speed;
 }
@@ -4445,9 +4540,9 @@ sub getTrackFromSpeedAndBitstreeam
    my ($speed, $bitstream) = @_;
    my $ret = "";
    
-   if ($speed eq "m" || $bitstream =~ m!/! )
+   if ($speed eq "a" || $speed eq "m" || $bitstream =~ m!/! )
    {
-        $ret .= "   speed $speed\n" if $speed ne "m";
+        $ret .= "   speed $speed\n" if $speed ne "m" && $speed ne "a";
    	my @tmp = split(/([\/ABCD])/, $bitstream);
    	for my $i (@tmp)
    	{
