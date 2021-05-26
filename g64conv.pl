@@ -979,6 +979,80 @@ elsif ($from eq "info" &&  $to =~ /\.scp$/i )
      print "      FluxSUm=" . $fluxMetadata->{fluxSum} . ", rpm=$rpm\n";
   }
 }
+elsif ($from eq "batch"  )
+{
+   my $myself = $0;
+   
+   $myself = $^X if $^X !~ /perl(\.exe)?/;
+   
+   my ($paramSide, $paramRotation, $paramOther, $format2) = ("", "", "", "");
+   shift;
+   my ($srcSpec, $dstTpl, $format) = @ARGV;
+   shift;
+   shift;
+   shift;
+   
+   $srcSpec =~ s/[0-9][0-9]\.[0-1]\.raw$/??.?.raw/i;
+   
+   for my $i (@ARGV)
+   {
+      if ($i =~ /^s([0-2].*)$/i)
+      {
+      	die "s-Parameter already given\n" if $paramSide;
+      	$paramSide = $1;
+      }
+      elsif ($i =~ /^r([0-9].*)$/i)
+      {
+      	die "r-Parameter already given\n" if $paramRotation;
+      	$paramRotation = $1;
+      }
+      else
+      {
+      	die "speedRotationSpec Parameter already given\n" if $paramOther;
+      	$paramOther = $i;
+      }
+   }
+   
+   $paramRotation = "0" unless $paramRotation;
+   if ($paramSide eq "")
+   {
+   	$paramSide = "0";
+        $paramSide = "2" if lc($format) eq "g71";
+   }
+   
+   if ($format =~ /^txt$/i )
+   {
+      $format2 = "1 ";
+      $format = "txt";
+   }
+   if ($format =~ /^txt:(.*)$/i )
+   {
+      $format2 = $1 . " ";
+      $format = "txt";
+   }
+
+   $paramSide = parseRange($paramSide);
+   $paramRotation = parseRange($paramRotation);
+   
+   for my $s (keys %$paramSide)
+   {
+   	for my $r (keys %$paramRotation)
+   	{
+           my $dst = "${dstTpl}_s${s}_r${r}.${format}";
+           
+           my $par = "r${r},scpside$s";
+           $par .= ",".$paramOther if $paramOther;
+           
+           my $src = $srcSpec;
+           $src =~ s/\?.raw/$s.raw/ if $s < 2;
+
+           my $cmd = "$myself \"$src\" \"$dst\" $format2$par";
+           print "Executibg $cmd\n";
+           system $cmd;
+           print "Done\n";
+   	}
+   }
+}
 else
 {
    die "Unknown conversion\n";
@@ -3845,7 +3919,7 @@ sub parseRotationSpeedParameter
       	}
       	
       	$ret{verifyRange1} = $1;
-      	$ret{verifyRange2} = -$1 unless defined $2;
+      	$ret{verifyRange1} = -$1 unless defined $2;
       	$ret{verifyRange2} = $1;
       	$ret{verifyRange2} = $2 if defined $2;
       }
@@ -3997,7 +4071,7 @@ sub fluxtobitstreamV2
    $ret->[0];
 }
 
-sub fluxtobitstreamV3
+sub fluxtobitstreamV3old
 {
    my ($flux, $speed, $param,$track, $level, $writeSplicePos ) = @_;
 
@@ -4091,7 +4165,7 @@ sub fluxtobitstreamV3
          		      {
          		      	 next if $speed == $speed2;
          		      	
-         		         my $tmp2 = fluxtobitstreamV3(\@tmpFlux, $speed2, $param,$track,$level,undef);
+         		         my $tmp2 = fluxtobitstreamV3old(\@tmpFlux, $speed2, $param,$track,$level,undef);
          		         my $tmpStr = $tmp2->[0];
          		         $tmpStr =~ s/_//g;
          		         $tmpStr = parseTrack($tmpStr, $speed2, $level, 0, $tmp2->[1]);
@@ -4156,6 +4230,187 @@ sub fluxtobitstreamV3
    [$bits, \@remarks ];
 }
 
+sub fluxtobitstreamV3
+{
+   my ($flux, $speed, $param,$track, $level, $writeSplicePos ) = @_;
+
+   my $rpm = $param->{rpm};
+   my $bits = "";
+   my $syncCnt = 0;
+   
+   my $pulseactive = 0;
+   my $clock = 0;
+   my $counter = 0;
+   my $tcarry = 0;
+   my $pulseDuration = 40;
+   my $isSync = 0;
+   my $lastSyncTime = 0;
+   my $lastSyncPos = 0;
+   my $tme = 0;
+   my $writeSpliceDone = !defined $writeSplicePos;
+   my $pos = 0;
+   my $bitsFromLastSync = 10000;
+
+   $writeSplicePos *= 3200000* 300 / $rpm if defined $writeSplicePos;
+   
+   my %remarks = ();
+   
+   $pulseDuration = 25 if $speed >= 4; # Exact value unknown
+   
+   my $isMultispeed = $speed eq "m" || $speed eq "a";
+   my $allSpeeds = $speed eq "a";
+   
+   for (my $I=-2*@$flux; $I<@$flux; $I++)
+   {
+      my $i = $I;
+      $i += @$flux if $i < -@$flux;
+   	
+      if ($I == -@$flux)
+      {
+         $bits = "";
+         $pos = 0;
+         $writeSpliceDone = !defined $writeSplicePos;
+         if ($tme == 3200000)
+         {
+            $I=0;
+         }
+         else
+         {
+            $isSync = 0;
+            $bitsFromLastSync = 10000;
+            $tme = 0;
+            $syncCnt = 0;
+         }
+      }
+      if ($I == 0)
+      {
+         $bits = chr(65+$speed) if $isMultispeed;
+         $pos = 0;
+         #print "DEBUG: $tme\n";
+         %remarks = ();
+         $bits .= chr(65+$speed) if $isMultispeed;
+         $writeSpliceDone = !defined $writeSplicePos;
+         $writeSplicePos += $tme if defined $writeSplicePos;
+         $syncCnt = 0;
+      }
+      my $tmeToFlux = $flux->[$i] / 5 * 300 / $rpm;
+
+      my $delay = 0;
+      
+      $pulseactive = !$pulseactive;
+      
+      do
+      {
+         if ($delay == $pulseDuration && $pulseactive == 1)
+         {
+            $clock = $speed;
+            $counter = 0;
+            $pulseactive = 0;
+            
+            $tmeToFlux += $tcarry;
+            $tcarry = 0;
+         }
+         
+         if ($clock == 16)
+         {
+            $clock = $speed;
+            $counter++;
+            
+            if (($counter & 3) == 2)
+            {
+                $bitsFromLastSync++;
+                if ($counter == 2)
+                {
+                   $bits .= "1";
+                   $isSync++;
+                   
+                   $syncCnt++ if $isSync == 10;
+                   $bitsFromLastSync = 10000 if $isSync == 10;
+
+                   if ($isMultispeed && $isSync == 10)
+                   {
+                   	my $ii = $i;
+                   	$ii += @$flux if $ii < 0;
+                   	$speed = doGetSpeedZoneMuultitrack([@$flux, @$flux], $ii, $param, $track, $syncCnt);
+                   	
+                        if ($allSpeeds)
+                        {
+                   	   my $tmpFlux = [@$flux, @$flux];
+                   	   my @tmpflux = @$tmpFlux;
+                   	   my $end = findEndOfFluxPart($tmpFlux, $ii);
+      			   if (defined $end)
+      			   {
+         		      my @tmpFlux = @tmpflux[$ii..$end];
+         		      my $cmt = "";
+         		      for my $speed2 (0..3)
+         		      {
+         		      	 next if $speed == $speed2;
+         		      	
+         		         my $tmp2 = fluxtobitstreamV3(\@tmpFlux, $speed2, $param,$track,$level,undef);
+         		         my $tmpStr = $tmp2->[0];
+         		         $tmpStr =~ s/_//g;
+         		         $tmpStr = parseTrack($tmpStr, $speed2, $level, 0, $tmp2->[1]);
+         		         $tmpStr =~ s/^end-track//m;
+         		         $tmpStr =~ s/\n\n+$/\n/s;
+         		         $tmpStr =~ s/^/      ; /mg;
+         		         $cmt .= "; ; Decoded with alternative speed\n";
+         		         $cmt .= $tmpStr;
+         		      }
+         		      $remarks{$pos} = $cmt;
+      			    }
+      		        }
+                   	
+                   	$bits .= chr(65+$speed);
+                   }
+                }
+                else
+                {
+                   $bits .= "0";
+                   if ($isSync >= 10)
+                   {
+                   	$lastSyncTime = $tme;
+                   	$lastSyncPos = $pos;
+                   	$bitsFromLastSync = 0;
+                   }
+                   $isSync = 0;
+                }
+
+               if ($bitsFromLastSync == 2600)
+               {
+                  $remarks{$lastSyncPos} = "; Time reading block #". $syncCnt .": " . (($tme-$lastSyncTime)/16) . "탎, per bit ". (($tme-$lastSyncTime)/16/2600). "탎 # ";
+               }
+               
+               if ($bitsFromLastSync == 80 && !defined $remarks{$lastSyncPos})
+               {
+                  $remarks{$lastSyncPos} = "; Time reading block #". $syncCnt .": " . (($tme-$lastSyncTime)/16) . "탎, per bit ". (($tme-$lastSyncTime)/16/80). "탎 # ";
+               }
+
+               $pos++;
+            }
+         }
+         $delay ++;
+         $clock ++;
+         if (!$writeSpliceDone  && $tme >= $writeSplicePos)
+         {
+            $writeSpliceDone = 1;
+            $bits .= "/";
+         }
+         $tme++;
+      } while ($delay * 6.25e-8 + 5e-10 < $tmeToFlux);
+      $bits .= "_";
+      
+      $tcarry += $tmeToFlux - $delay * 6.25e-8;
+   }
+   
+   my @remarks = ();
+   for my $k (keys(%remarks))
+   {
+      push (@remarks, { position => $k, command => $remarks{$k}} );
+   }
+
+   [$bits, \@remarks ];
+}
+
 sub fluxtobitstream
 {
    my ($flux, $speed, $param, $track, $level, $writeSplicePos) = @_;
@@ -4164,8 +4419,8 @@ sub fluxtobitstream
    my $alg = $param->{decoderalgorithm};
    my $rpm = $param->{rpm};
    
-   $alg = 3 if $speed eq "m";
-   $alg = 3 if $speed eq "a";
+   $alg = 3 if $speed eq "m" && $alg < 3;
+   $alg = 3 if $speed eq "a" && $alg < 3;
 
    $ret = fluxtobitstreamV3($flux, $speed, $param, $track, $level, $writeSplicePos) if $alg == 3;
    $ret = fluxtobitstreamV2($flux, $speed, $param, $track) if $alg == 2;
