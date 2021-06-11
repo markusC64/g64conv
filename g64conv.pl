@@ -1125,6 +1125,13 @@ sub g64totxt
       my $trackPosition = unpack("L", substr($g64, $trackTablePosition, 4));
       next unless $trackPosition;
       my $trackSize = unpack("S", substr($g64, $trackPosition, 2));
+      my $isMFM = 0;
+      if ($trackSize > 32767)
+      {
+          $isMFM = 1;
+          $trackSize -= 32768;
+      }
+
       my $trackContent = substr($g64, $trackPosition+2, $trackSize);
       
       my $trackContentHex = unpack("H*", $trackContent);
@@ -1132,7 +1139,7 @@ sub g64totxt
       
       my $speedTableOffset = 8+4*$notracks + 4*$i;
       my $speed = unpack("L", substr($g64, $speedTableOffset, 4));
-      if ($speed > 4)
+      if ($speed > 8)
       {
          my $tmp = substr($g64, $speed, $tracksizeHdr/4);
 	 my $tmp2 = unpack("B*", $tmp);
@@ -1205,7 +1212,6 @@ sub g64totxt
 	 $tmp =~ s/ //g;
          my $trackBin = pack("H*", $tmp);
 	 my $trackContentBin = unpack("B*", $trackBin);
-
          my @markPositions = ();
          push (@markPositions, @{$addMarkPositions->{$track} }) if defined $addMarkPositions->{$track};
          push (@markPositions, { position => 0, command => "; position 0"}) if $level > 2;
@@ -1225,7 +1231,9 @@ sub g64totxt
             }
          }
          
-         $tmp = parseTrack($trackContentBin, $speed, $level, 1, \@markPositions);
+         $tmp = parseTrack($trackContentBin, $speed, $level, 1, \@markPositions) unless $isMFM;
+         $tmp = parseMFMTrack($trackContentBin, $speed) if $isMFM;
+
 	 unless (defined $tmp)
 	 {
             if ($haveExtHeader)
@@ -1932,7 +1940,7 @@ sub txttog64
    my $tracksizeHdr = 0;
    my $noTracks = 0;
    my @tracks = ();
-   my $speed = 4;
+   my $speed = 9;
    my $beginat;
 
    open ($file, "<", \$text);
@@ -1950,6 +1958,7 @@ sub txttog64
    my $trackFillValue = undef;
    my $formatCode = undef;
    my $formatExtension = undef;
+   my $mfmMark = undef;
    
    my @writeSplicePos = ();
    my @writeAreaSize = ();
@@ -1977,6 +1986,10 @@ sub txttog64
       {
          $tracksizeHdr = $1;
       }
+      elsif ($line =~ /^MFM-Track$/)
+      {
+         $mfmMark = 0x8000;
+      }
       elsif ($line =~ /^track (.*)$/)
       {
 	 $curTrackNo = $1*2-1;
@@ -1990,6 +2003,7 @@ sub txttog64
          $trackFillValue = undef;
          $formatCode = undef;
          $formatExtension = undef;
+         $mfmMark = 0;
       }
       elsif ($line eq "end-track")
       {
@@ -2009,10 +2023,10 @@ sub txttog64
 	 
          if ($curTrackNo)
 	 {
-	    $tracks[$curTrackNo] = [ $speed2, $curTrack2 ];
+	    $tracks[$curTrackNo] = [ $speed2, $curTrack2, $mfmMark ];
 	 }
          $checksumBlock = 0;
-	 $speed = 4;
+	 $speed = 9;
 	 
 	 if (defined $writeAreaEnd)
 	 {
@@ -2072,12 +2086,14 @@ sub txttog64
       }
       elsif ($line =~ /^speed (.*)$/)
       {
-         if ($speed eq "4")
+         if ($speed eq "9")
 	 {
             $speed = $1 & 3;
+            $speed = $1 if $1 == 8;
 	 }
 	 else
 	 {
+	    die if $speed == 8;
 	    my $newSpeed = $1 & 3;
 	    my $curSpeed = substr($speed, -1, 1);
 	    my $len1 = length($curTrack);
@@ -2091,12 +2107,14 @@ sub txttog64
       }
       elsif ($line =~ /^speed2 (.*)$/)
       {
-         if ($speed eq "4")
+         if ($speed eq "9")
 	 {
+	    die if $speed == 8;
             $speed = $1 & 3;
 	 }
 	 else
 	 {
+	    die if $speed == 8;
 	    my $newSpeed = $1 & 3;
 	    my $curSpeed = substr($speed, -1, 1);
 	    my $len1 = length($curTrack);
@@ -2248,6 +2266,15 @@ sub txttog64
 	    }
 	 }
       }
+      elsif ($line =~ /^extbin (.*) (.*)$/ && defined $d64)
+      {
+         my $pos = hex($1);
+	 my $size = hex($2);
+	 
+         my $par = unpack("B*", substr($d64, $pos, $size));
+         $curTrack .= $par;
+        $checksumBlock = 2 if $checksumBlock == 1;
+      }
       elsif ($line =~ /^warp25-checksum(.*)$/)
       {
          my $par = $1;
@@ -2328,6 +2355,7 @@ sub txttog64
       
       my $trackSpeed = $tracks[$i]->[0];
       my $trackContent = $tracks[$i]->[1];
+      my $mfmMark = $tracks[$i]->[2];
 
       my $track2 = ($i+1)/2;
       my $trackTablePosition = 8+4*$i;
@@ -2338,8 +2366,9 @@ sub txttog64
       substr($g64, $speedTableOffset, 4) = pack("L", $trackSpeed) if length($trackSpeed) == 1;
       
       my $tmp = pack("B*", $trackContent);
-      my $siz = length($tmp);
-      my $tmpSize = pack("S", $siz);
+      my $siz = length($tmp) ;
+      my $siz2 = $siz^ $mfmMark ;
+      my $tmpSize = pack("S", $siz2);
       $g64 .= $tmpSize.$tmp.("\0" x ($tracksizeHdr-$siz));
 
       if (length($trackSpeed) > 1)
@@ -5098,3 +5127,136 @@ sub verifyD71
    }
 }
 
+sub parseMFMTrack
+{
+   my ($track, $speed) = @_;
+   my $ret = "   MFM-Track\n   ; speed is only for header\n   speed $speed\n";
+   my @sectors = ();
+
+   $track =~ s/^((.{8}))//;
+   my $trackBin = pack("B*", $1);
+   my $noSectors = ord $trackBin;
+   my $trackContentHex = unpack("H*", $trackBin);
+   
+   $ret .= "   ; # sectors\n   bytes $trackContentHex\n";
+   if ($track eq "")
+   {
+      $ret .= "   ; Aborted\n";
+      return $ret;
+   }
+
+
+   $track =~ s/^((.{8}))//;
+   $trackBin = pack("B*", $1);
+   my $version = ord $trackBin;
+   $trackContentHex = unpack("H*", $trackBin);
+
+   $ret .= "   ; version \n   bytes $trackContentHex\n";
+
+   $noSectors = 0 if $version;
+   $noSectors = 0 if $noSectors > 32;
+   
+   for (my $i=0; $i<$noSectors; $i++)
+   {
+      if ($track eq "")
+      {
+      	 $ret .= "   ; Aborted\n";
+      	 return $ret;
+      }
+      $track =~ s/^((.{8}))//;
+      $trackBin = pack("B*", $1);
+      my $trackNo = ord $trackBin;
+      $trackContentHex = unpack("H*", $trackBin);
+      $ret .= "\n   ; track\n   bytes $trackContentHex\n";
+   	
+      if ($track eq "")
+      {
+      	 $ret .= "   ; Aborted\n";
+      	 return $ret;
+      }
+      $track =~ s/^((.{8}))//;
+      $trackBin = pack("B*", $1);
+      my $sideNo = ord $trackBin;
+      $trackContentHex = unpack("H*", $trackBin);
+      $ret .= "   ; side\n   bytes $trackContentHex\n";
+
+      if ($track eq "")
+      {
+      	 $ret .= "   ; Aborted\n";
+      	 return $ret;
+      }
+      $track =~ s/^((.{8}))//;
+      $trackBin = pack("B*", $1);
+      my $sectorNo = ord $trackBin;
+      $trackContentHex = unpack("H*", $trackBin);
+      $ret .= "   ; sector\n   bytes $trackContentHex\n";
+
+      if ($track eq "")
+      {
+      	 $ret .= "   ; Aborted\n";
+      	 return $ret;
+      }
+      $track =~ s/^((.{8}))//;
+      $trackBin = pack("B*", $1);
+      my $sectorSize = ord $trackBin;
+      $trackContentHex = unpack("H*", $trackBin);
+      my $comment = "";
+      $comment = "   ; size is " . (128 << $sectorSize) . "\n" if $sectorSize < 7;
+      $ret .= "   ; sector size\n$comment   bytes $trackContentHex\n";
+
+      if ($track eq "")
+      {
+      	 $ret .= "   ; Aborted\n";
+      	 return $ret;
+      }
+      $track =~ s/^((.{8}))//;
+      $trackBin = pack("B*", $1);
+      my $errorCode = ord $trackBin;
+      $trackContentHex = unpack("H*", $trackBin);
+      $ret .= "   ; error code\n   bytes $trackContentHex\n";
+      
+      my $sectorData = [ $trackNo, $sideNo, $sectorNo, $sectorSize, $errorCode];
+      push (@sectors, $sectorData);
+   }
+
+   my $paddingBytes = (32 - $noSectors)*5;
+   my $paddingBits = $paddingBytes*8;
+
+   if ($paddingBits > 0)
+   {
+      $track =~ s/^(.{$paddingBits})//;
+      my $trackBin = pack("B*", $1);
+      my $trackContentHex = unpack("H*", $trackBin);
+      $trackContentHex =~ s/(..)/ $1/gc;
+      $ret .= "\n   ;Padding\n   bytes $trackContentHex\n";
+   }
+
+   for my $sector (@sectors)
+   {
+      my ($trackNo, $sideNo, $sectorNo, $sectorSize, $errorCode) = @$sector;
+      
+      $ret .= "\n   ; Track $trackNo, Side=$sideNo, sector=$sectorNo\n";
+      my $size = 128 << $sectorSize;
+      
+      if (length($track) < $size)
+      {
+      	 $ret .= "   ; Aborted\n";
+      	 last;
+      }
+      $track =~ s/^((.{8}){$size})//;
+      my $trackBin = pack("B*", $1);
+      my $trackContentHex = unpack("H*", $trackBin);
+      $trackContentHex =~ s/(..)/ $1/gc;
+      $ret .= "   bytes $trackContentHex\n";
+   }
+
+   if ($track ne "")
+   {
+      $track =~ s/^((.{8})+)//;
+      my $trackBin = pack("B*", $1);
+      my $trackContentHex = unpack("H*", $trackBin);
+      $trackContentHex =~ s/(..)/ $1/gc;
+      $ret .= "\n   ;Padding\n   bytes $trackContentHex\n";
+   }
+   $ret . "end-track\n";
+}
