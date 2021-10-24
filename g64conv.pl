@@ -15,6 +15,7 @@
 
 use strict;
 
+
 if (@ARGV < 2)
 {
    die "Syntax: g64conv.pl <from.g64> <to.txt> [<mode>]\n".
@@ -218,11 +219,23 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.g((64)|(71))$/i)
             $bitstream = $bitstream->[0];
          }
          $bitstream = padbitstream($bitstream);
+         my $enlargeTRackSize;
+         if ($speed >= 8)
+         {
+            $enlargeTRackSize = "enlarge-track-size2 16384\n" if $speed == 8;
+            $enlargeTRackSize = "enlarge-track-size2 32768\n" if $speed == 9;
+            $enlargeTRackSize = "enlarge-track-size2 65535\n" if $speed == 10;
+         }
+         elsif ($speed >= 4)
+         {
+            $enlargeTRackSize = "enlarge-track-size 16384\n";
+         }
         
             if ($side == 0)
             {
                $ret0 .= "track $trackNo\n";
                $ret0 .= getTrackFromSpeedAndBitstreeam($speed, $bitstream);
+               $ret0 .= $enlargeTRackSize if $enlargeTRackSize;
                $ret0 .= "end-track\n";
             }
             else
@@ -230,6 +243,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.g((64)|(71))$/i)
                $trackNo += 42;
                $ret1 .= "track $trackNo\n";
                $ret1 .= getTrackFromSpeedAndBitstreeam($speed, $bitstream);
+               $ret1 .= $enlargeTRackSize if $enlargeTRackSize;
                $ret1 .= "end-track\n";
             }
       
@@ -325,9 +339,21 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.txt$/i)
            $bitstream = $bitstream->[0];
         }
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
+         my $enlargeTRackSize;
+         if ($speed >= 8)
+         {
+            $enlargeTRackSize = "enlarge-track-size2 16384\n" if $speed == 8;
+            $enlargeTRackSize = "enlarge-track-size2 32768\n" if $speed == 9;
+            $enlargeTRackSize = "enlarge-track-size2 65535\n" if $speed == 10;
+         }
+         elsif ($speed >= 4)
+         {
+            $enlargeTRackSize = "enlarge-track-size 16384\n";
+         }
         
         $ret .= "track $trackNo\n";
         $ret .= getTrackFromSpeedAndBitstreeam($speed, $bitstream);
+        $ret .= $enlargeTRackSize if $enlargeTRackSize;
         $ret .= "end-track\n";
      }
   }
@@ -373,9 +399,22 @@ elsif ($from =~ /\\?\?\.[01]\.raw$/i && $to =~ /\.g64$/i)
         $bitstream = $bitstream->[0];
      }
      $bitstream = padbitstream($bitstream);
+     
+         my $enlargeTRackSize;
+         if ($speed >= 8)
+         {
+            $enlargeTRackSize = "enlarge-track-size2 16384\n" if $speed == 8;
+            $enlargeTRackSize = "enlarge-track-size2 32768\n" if $speed == 9;
+            $enlargeTRackSize = "enlarge-track-size2 65535\n" if $speed == 10;
+         }
+         elsif ($speed >= 4)
+         {
+            $enlargeTRackSize = "enlarge-track-size 16384\n";
+         }
     
      $ret .= "track $trackNo\n";
      $ret .= getTrackFromSpeedAndBitstreeam($speed, $bitstream);
+     $ret .= $enlargeTRackSize if $enlargeTRackSize;
      $ret .= "end-track\n";
   }
   
@@ -442,10 +481,23 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.txt$/i)
         }
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
+         my $enlargeTRackSize;
+         if ($speed >= 8)
+         {
+            $enlargeTRackSize = "enlarge-track-size2 16384\n" if $speed == 8;
+            $enlargeTRackSize = "enlarge-track-size2 32768\n" if $speed == 9;
+            $enlargeTRackSize = "enlarge-track-size2 65535\n" if $speed == 10;
+         }
+         elsif ($speed >= 4)
+         {
+            $enlargeTRackSize = "enlarge-track-size 16384\n";
+         }
+        
         if ($side == 0)
         {
            $ret0 .= "track $trackNo\n";
            $ret0 .= getTrackFromSpeedAndBitstreeam($speed, $bitstream);
+           $ret0 .= $enlargeTRackSize if $enlargeTRackSize;
            $ret0 .= "end-track\n";
         }
         else
@@ -453,6 +505,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.txt$/i)
            $trackNo += 42;
            $ret1 .= "track $trackNo\n";
            $ret1 .= getTrackFromSpeedAndBitstreeam($speed, $bitstream);
+           $ret1 .= $enlargeTRackSize if $enlargeTRackSize;
            $ret1 .= "end-track\n";
         }
      }
@@ -505,10 +558,23 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.g((64)|(71))$/i)
      }
      $bitstream = padbitstream($bitstream);
     
+         my $enlargeTRackSize;
+         if ($speed >= 8)
+         {
+            $enlargeTRackSize = "enlarge-track-size2 16384\n" if $speed == 8;
+            $enlargeTRackSize = "enlarge-track-size2 32768\n" if $speed == 9;
+            $enlargeTRackSize = "enlarge-track-size2 65535\n" if $speed == 10;
+         }
+         elsif ($speed >= 4)
+         {
+            $enlargeTRackSize = "enlarge-track-size 16384\n";
+         }
+
         if ($side == 0)
         {
            $ret0 .= "track $trackNo\n";
            $ret0 .= getTrackFromSpeedAndBitstreeam($speed, $bitstream);
+           $ret0 .= $enlargeTRackSize if $enlargeTRackSize;
            $ret0 .= "end-track\n";
         }
         else
@@ -516,6 +582,7 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.g((64)|(71))$/i)
            $trackNo += 42;
            $ret1 .= "track $trackNo\n";
            $ret1 .= getTrackFromSpeedAndBitstreeam($speed, $bitstream);
+           $ret1 .= $enlargeTRackSize if $enlargeTRackSize;
            $ret1 .= "end-track\n";
         }
   }
@@ -566,10 +633,23 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.txt$/i)
          }
          $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
+         my $enlargeTRackSize;
+         if ($speed >= 8)
+         {
+            $enlargeTRackSize = "enlarge-track-size2 16384\n" if $speed == 8;
+            $enlargeTRackSize = "enlarge-track-size2 32768\n" if $speed == 9;
+            $enlargeTRackSize = "enlarge-track-size2 65535\n" if $speed == 10;
+         }
+         elsif ($speed >= 4)
+         {
+            $enlargeTRackSize = "enlarge-track-size 16384\n";
+         }
+
             if ($side == 0)
             {
                $ret0 .= "track $trackNo\n";
                $ret0 .= getTrackFromSpeedAndBitstreeam($speed, $bitstream);
+               $ret0 .= $enlargeTRackSize if $enlargeTRackSize;
                $ret0 .= "end-track\n";
 
             }
@@ -578,6 +658,7 @@ elsif ($from =~ /\.txt$/i && $to =~ /\.txt$/i)
                $trackNo += 42;
                $ret1 .= "track $trackNo\n";
                $ret1 .= getTrackFromSpeedAndBitstreeam($speed, $bitstream);
+               $ret1 .= $enlargeTRackSize if $enlargeTRackSize;
                $ret1 .= "end-track\n";
             }
       
@@ -780,10 +861,23 @@ elsif ($from =~ /\.scp$/i && $to =~ /\.txt$/i)
         }
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
+         my $enlargeTRackSize;
+         if ($speed >= 8)
+         {
+            $enlargeTRackSize = "enlarge-track-size2 16384\n" if $speed == 8;
+            $enlargeTRackSize = "enlarge-track-size2 32768\n" if $speed == 9;
+            $enlargeTRackSize = "enlarge-track-size2 65535\n" if $speed == 10;
+         }
+         elsif ($speed >= 4)
+         {
+            $enlargeTRackSize = "enlarge-track-size 16384\n";
+         }
+
             if ($side == 0)
             {
                $ret0 .= "track $trackNo\n";
                $ret0 .= getTrackFromSpeedAndBitstreeam($speed, $bitstream);
+               $ret0 .= $enlargeTRackSize if $enlargeTRackSize;
                $ret0 .= "end-track\n";
             }
             else
@@ -791,6 +885,7 @@ elsif ($from =~ /\.scp$/i && $to =~ /\.txt$/i)
                $trackNo += 42;
                $ret1 .= "track $trackNo\n";
                $ret1 .= getTrackFromSpeedAndBitstreeam($speed, $bitstream);
+               $ret1 .= $enlargeTRackSize if $enlargeTRackSize;
                $ret1 .= "end-track\n";
             }
      }
@@ -863,10 +958,23 @@ elsif ($from =~ /.scp$/i && $to =~ /\.g((64)|(71))$/i)
         }
         $bitstream = padbitstream($bitstream) unless $level eq "rawUnpadded";
         
+         my $enlargeTRackSize;
+         if ($speed >= 8)
+         {
+            $enlargeTRackSize = "enlarge-track-size2 16384\n" if $speed == 8;
+            $enlargeTRackSize = "enlarge-track-size2 32768\n" if $speed == 9;
+            $enlargeTRackSize = "enlarge-track-size2 65535\n" if $speed == 10;
+         }
+         elsif ($speed >= 4)
+         {
+            $enlargeTRackSize = "enlarge-track-size 16384\n";
+         }
+
             if ($side == 0)
             {
                $ret0 .= "track $trackNo\n";
                $ret0 .= getTrackFromSpeedAndBitstreeam($speed, $bitstream);
+               $ret0 .= $enlargeTRackSize if $enlargeTRackSize;
                $ret0 .= "end-track\n";
             }
             else
@@ -874,6 +982,7 @@ elsif ($from =~ /.scp$/i && $to =~ /\.g((64)|(71))$/i)
                $trackNo += 42;
                $ret1 .= "track $trackNo\n";
                $ret1 .= getTrackFromSpeedAndBitstreeam($speed, $bitstream);
+               $ret1 .= $enlargeTRackSize if $enlargeTRackSize;
                $ret1 .= "end-track\n";
             }
   }
@@ -1125,21 +1234,29 @@ sub g64totxt
       my $trackPosition = unpack("L", substr($g64, $trackTablePosition, 4));
       next unless $trackPosition;
       my $trackSize = unpack("S", substr($g64, $trackPosition, 2));
+      my $speedTableOffset = 8+4*$notracks + 4*$i;
+      my $speed = unpack("L", substr($g64, $speedTableOffset, 4));
+      
       my $isMFM = 0;
-      if ($trackSize > 32767)
+      $isMFM = 1 if $speed == 8;
+      $isMFM = 1 if $speed == 9;
+      $isMFM = 1 if $speed == 10;
+      $isMFM = 1 if $speed == 11;
+
+      if ($trackSize > 32767 && !$isMFM)
       {
-          $isMFM = 1;
+          $isMFM = 2;
           $trackSize -= 32768;
       }
+      
+      $trackSize *= 8 if $isMFM == 1;
 
       my $trackContent = substr($g64, $trackPosition+2, $trackSize);
       
       my $trackContentHex = unpack("H*", $trackContent);
       $trackContentHex =~ s/(..)/ $1/gc;
-      
-      my $speedTableOffset = 8+4*$notracks + 4*$i;
-      my $speed = unpack("L", substr($g64, $speedTableOffset, 4));
-      if ($speed > 8)
+
+      if ($speed > 11)
       {
          my $tmp = substr($g64, $speed, $tracksizeHdr/4);
 	 my $tmp2 = unpack("B*", $tmp);
@@ -1182,6 +1299,8 @@ sub g64totxt
          $formatExtension = unpack "C", substr($g64, 8*$notracks + 16*$i + 15, 1);
       }
 
+      #print "Converting track $track\n";
+
       my $trackRet = "track $track\n";
       if ($level == 0)
       {
@@ -1195,9 +1314,15 @@ sub g64totxt
             $trackRet .= "   format-code $formatCode\n";
             $trackRet .= "   format-extension $formatExtension\n";
          }
-      	 if ($level eq "00")
+      	 if ($level eq "00" || $isMFM == 1)
       	 {
             my $trackContentBin = unpack("B*", $trackContent);
+            if ($isMFM == 1)
+            {
+               my $bitsToRemove = ord(substr($trackContent, -1, 1));
+               $trackContentBin = substr($trackContentBin, 0, length($trackContentBin) - $bitsToRemove);
+               $trackSize -= $bitsToRemove / 8;
+            }
             $trackRet .= "   speed $speed\n   bits $trackContentBin\n";
       	 }
       	 else
@@ -1212,6 +1337,16 @@ sub g64totxt
 	 $tmp =~ s/ //g;
          my $trackBin = pack("H*", $tmp);
 	 my $trackContentBin = unpack("B*", $trackBin);
+         
+         if ($isMFM == 1)
+         {
+            my $bitsToRemove = ord(substr($trackBin, -1, 1));
+            $trackContentBin = substr($trackContentBin, 0, length($trackContentBin) - $bitsToRemove);
+            $trackSize -= $bitsToRemove / 8;
+#            $trackSize = length $trackContentBin;
+         }
+         
+         
          my @markPositions = ();
          push (@markPositions, @{$addMarkPositions->{$track} }) if defined $addMarkPositions->{$track};
          push (@markPositions, { position => 0, command => "; position 0"}) if $level > 2;
@@ -1232,7 +1367,8 @@ sub g64totxt
          }
          
          $tmp = parseTrack($trackContentBin, $speed, $level, 1, \@markPositions) unless $isMFM;
-         $tmp = parseMFMTrack($trackContentBin, $speed) if $isMFM;
+         $tmp = parseMFMTrack($trackContentBin, $speed) if $isMFM == 2;
+         $tmp = parseMFMRawTrack($trackContentBin, $speed) if $isMFM == 1;
 
 	 unless (defined $tmp)
 	 {
@@ -1247,7 +1383,8 @@ sub g64totxt
             }
             $tmp =  "   speed $speed\n";
             $tmp .= "   ; length $trackSize\n";
-	    $tmp .= "   begin-at 0\n   bytes$trackContentHex\n";
+	    $tmp .= "   begin-at 0\n   bytes$trackContentHex\n" unless $isMFM == 1;
+	    $tmp .= "   begin-at 0\n   bits $trackContentBin\n" if $isMFM == 1;
 	    $tmp .= "end-track\n\n";
 	 }
 	 else
@@ -1940,7 +2077,7 @@ sub txttog64
    my $tracksizeHdr = 0;
    my $noTracks = 0;
    my @tracks = ();
-   my $speed = 9;
+   my $speed = "?";
    my $beginat;
 
    open ($file, "<", \$text);
@@ -1949,6 +2086,7 @@ sub txttog64
    
    my $checksumBlock = 0;
    my $checksum = 0;
+   my $mfmchecksum = 0;
    
    my $haveExtension = 0;
    my $writeSplicePos = undef;
@@ -1986,6 +2124,15 @@ sub txttog64
       {
          $tracksizeHdr = $1;
       }
+      elsif ($line =~ /^enlarge-track-size (.*)$/)
+      {
+         $tracksizeHdr = $1 if $tracksizeHdr < $1;
+      }
+      elsif ($line =~ /^enlarge-track-size2 (.*)$/)
+      {
+         1;
+         #$tracksizeHdr = $1/8 if $tracksizeHdr < $1/8;
+      }
       elsif ($line =~ /^MFM-Track$/)
       {
          $mfmMark = 0x8000;
@@ -2015,8 +2162,11 @@ sub txttog64
 	    $speed .= $curSpeed x $len;
          }
 	 my $trk = ($curTrackNo+1)/2;
-	 die "Track $trk length $len bits is not a multilpe of 8 bits\n" if $len % 8;
 	 
+	 unless ($speed eq "8" || $speed eq "9" ||  $speed eq "A" ||  $speed eq "B")
+	 {
+	    die "Track $trk length $len bits is not a multilpe of 8 bits\n" if $len % 8;
+	 }
 	 my $tmp = (length($curTrack)-$beginat) % length($curTrack); 
 	 my $curTrack2 = substr($curTrack, $tmp) . substr($curTrack, 0, $tmp);
 	 my $speed2 = substr($speed, $tmp) . substr($speed, 0, $tmp);
@@ -2026,7 +2176,7 @@ sub txttog64
 	    $tracks[$curTrackNo] = [ $speed2, $curTrack2, $mfmMark ];
 	 }
          $checksumBlock = 0;
-	 $speed = 9;
+	 $speed = "?";
 	 
 	 if (defined $writeAreaEnd)
 	 {
@@ -2086,14 +2236,19 @@ sub txttog64
       }
       elsif ($line =~ /^speed (.*)$/)
       {
-         if ($speed eq "9")
+         if ($speed eq "?")
 	 {
-            $speed = $1 & 3;
-            $speed = $1 if $1 == 8;
+            ### $speed = $1 & 3;
+            $speed = $1; #  if $1 >= 8;
+            $speed = "A" if $1 == 10;
+            $speed = "B" if $1 == 11;
 	 }
 	 else
 	 {
 	    die if $speed == 8;
+	    die if $speed == 9;
+	    die if $speed eq "A";
+	    die if $speed eq "B";
 	    my $newSpeed = $1 & 3;
 	    my $curSpeed = substr($speed, -1, 1);
 	    my $len1 = length($curTrack);
@@ -2107,14 +2262,20 @@ sub txttog64
       }
       elsif ($line =~ /^speed2 (.*)$/)
       {
-         if ($speed eq "9")
+         if ($speed eq "?")
 	 {
 	    die if $speed == 8;
+	    die if $speed == 9;
+	    die if $speed eq "A";
+	    die if $speed eq "B";
             $speed = $1 & 3;
 	 }
 	 else
 	 {
 	    die if $speed == 8;
+	    die if $speed == 9;
+	    die if $speed eq "A";
+	    die if $speed eq "B";
 	    my $newSpeed = $1 & 3;
 	    my $curSpeed = substr($speed, -1, 1);
 	    my $len1 = length($curTrack);
@@ -2152,6 +2313,86 @@ sub txttog64
 	 $par =~ s/ //g;
          my $trackBin = pack("H*", $par);
 	 my $trackContentBin = unpack("B*", $trackBin);
+	 $curTrack .= $trackContentBin;
+	 $checksumBlock = 2 if $checksumBlock == 1;
+      }
+      elsif ($line =~ /^mfm-bytes (.*)$/)
+      {
+         my $par = $1;
+	 $par =~ s/ //g;
+         my $trackBin = pack("H*", $par);
+	 my $trackContentBin = unpack("B*", $trackBin);
+	 ## $curTrack .= $trackContentBin;
+         my $actBit = substr($trackContentBin, 0, 1);
+	 if ($curTrack eq "")
+	 {
+            my $clock = $actBit ? "0": "c";
+            $curTrack .= $clock;
+	 }
+	 else
+	 {
+            my $lastBit = substr($curTrack, -1);
+            my $clock = ( $lastBit || $actBit) ? "0": "1";
+            $curTrack .= $clock;
+	 }
+	 $curTrack .= substr($trackContentBin, 0, 1);
+	 for (my $i=1; $i<length($trackContentBin); $i++)
+	 {
+	    my $lastBit = substr($trackContentBin, $i-1, 1);
+	    $actBit = substr($trackContentBin, $i, 1);
+            my $clock = ( $lastBit || $actBit) ? "0": "1";
+            $curTrack .= $clock;
+	    $curTrack .= $actBit;
+	 }
+	 
+	 $checksumBlock = 4 if $checksumBlock == 1;
+	 if ($checksumBlock == 4)
+	 {
+	    $mfmchecksum = crc16($mfmchecksum, $trackBin, 0x1021);
+	 }
+      }
+      elsif ($line =~ /^mfm-bits (.*)$/)
+      {
+         my $par = $1;
+	 $par =~ s/ //g;
+         my $trackBin = pack("B*", $par);
+	 my $trackContentBin = $1;
+	 ## $curTrack .= $trackContentBin;
+         my $actBit = substr($trackContentBin, 0, 1);
+	 if ($curTrack eq "")
+	 {
+            my $clock = $actBit ? "0": "c";
+            $curTrack .= $clock;
+	 }
+	 else
+	 {
+            my $lastBit = substr($curTrack, -1);
+            my $clock = ( $lastBit || $actBit) ? "0": "1";
+            $curTrack .= $clock;
+	 }
+	 $curTrack .= substr($trackContentBin, 0, 1);
+	 for (my $i=1; $i<length($trackContentBin); $i++)
+	 {
+	    my $lastBit = substr($trackContentBin, $i-1, 1);
+	    $actBit = substr($trackContentBin, $i, 1);
+            my $clock = ( $lastBit || $actBit) ? "0": "1";
+            $curTrack .= $clock;
+	    $curTrack .= $actBit;
+	 }
+	 
+	 $checksumBlock = 2 if $checksumBlock == 1;
+	 $checksumBlock = 2 if $checksumBlock == 4;
+      }
+      elsif ($line eq "mfmsnyc-a1")
+      {
+	 my $trackContentBin = "0100010010001001";
+	 $curTrack .= $trackContentBin;
+	 $checksumBlock = 2 if $checksumBlock == 1;
+	 $mfmchecksum = 0xcdb4;
+      }
+      elsif ($line eq "mfmsnyc-c2")
+      {
+	 my $trackContentBin = "0101001000100100";
 	 $curTrack .= $trackContentBin;
 	 $checksumBlock = 2 if $checksumBlock == 1;
       }
@@ -2275,6 +2516,45 @@ sub txttog64
          $curTrack .= $par;
         $checksumBlock = 2 if $checksumBlock == 1;
       }
+      elsif ($line =~ /^mfm-checksum(.*)$/)
+      {
+         my $par = $1;
+	 $par =~ s/ //g;
+	 
+	 if (length($par) == 32)
+	 {
+            $curTrack .= $par;
+	 }
+	 else
+	 {
+            my $trackContentBin;
+            if ($par eq "")
+            {
+            	$trackContentBin = sprintf "%016b\n", $mfmchecksum;
+            }
+            else
+            {
+               my $trackBin = pack("H*", $par);
+   	       $trackContentBin = unpack("B*", $trackBin);
+            }
+   
+            my $actBit = substr($trackContentBin, 0, 1);
+            my $lastBit = substr($curTrack, -1);
+            my $clock = ( $lastBit || $actBit) ? "0": "1";
+            $curTrack .= $clock;
+   	    $curTrack .= substr($trackContentBin, 0, 1);
+   	    for (my $i=1; $i<length($trackContentBin); $i++)
+   	    {
+   	       my $lastBit = substr($trackContentBin, $i-1, 1);
+   	       $actBit = substr($trackContentBin, $i, 1);
+               my $clock = ( $lastBit || $actBit) ? "0": "1";
+               $curTrack .= $clock;
+   	       $curTrack .= $actBit;
+   	    }
+	 }
+	 
+	 $checksumBlock = 3 if $checksumBlock == 1;
+      }
       elsif ($line =~ /^warp25-checksum(.*)$/)
       {
          my $par = $1;
@@ -2354,8 +2634,20 @@ sub txttog64
       }
       
       my $trackSpeed = $tracks[$i]->[0];
+      my $trackSpeed3 = $trackSpeed;
+      $trackSpeed3 = 10 if $trackSpeed eq "A";
+      $trackSpeed3 = 11 if $trackSpeed eq "B";
       my $trackContent = $tracks[$i]->[1];
       my $mfmMark = $tracks[$i]->[2];
+      
+      my $isMFMRaw = ($trackSpeed eq "8" || $trackSpeed eq "9" || $trackSpeed eq "A" || $trackSpeed eq "B");
+      if ($isMFMRaw)
+      {
+      	    my $len = length($trackContent); 
+            my $bitsToAdd = 120 - $len % 64;
+            my $extraBits = ("0" x $bitsToAdd) . sprintf("%08b", 8+$bitsToAdd);
+            $trackContent .= $extraBits;
+      }
 
       my $track2 = ($i+1)/2;
       my $trackTablePosition = 8+4*$i;
@@ -2363,11 +2655,13 @@ sub txttog64
 
       my $tmp = pack("L", length($g64));
       substr($g64, $trackTablePosition, 4) = $tmp;
-      substr($g64, $speedTableOffset, 4) = pack("L", $trackSpeed) if length($trackSpeed) == 1;
+      substr($g64, $speedTableOffset, 4) = pack("L", $trackSpeed3) if length($trackSpeed) == 1;
       
       my $tmp = pack("B*", $trackContent);
       my $siz = length($tmp) ;
       my $siz2 = $siz^ $mfmMark ;
+      $siz2 /= 8 if $isMFMRaw;
+
       my $tmpSize = pack("S", $siz2);
       $g64 .= $tmpSize.$tmp.("\0" x ($tracksizeHdr-$siz));
 
@@ -2920,22 +3214,32 @@ sub g64top64txt
       my $trackPosition = unpack("L", substr($g64, $trackTablePosition, 4));
       next unless $trackPosition;
       my $trackSize = unpack("S", substr($g64, $trackPosition, 2));
+      
+      my $speedTableOffset = 8+4*$notracks + 4*$i;
+      my $speed = unpack("L", substr($g64, $speedTableOffset, 4));
+
+      my $isMFM = 0;
+      $isMFM = 1 if $speed == 8;
+      $isMFM = 1 if $speed == 9;
+      $isMFM = 1 if $speed == 10;
+      $isMFM = 1 if $speed == 11;
+      
+      $trackSize *= 8 if $isMFM;
+      
       my $trackContent = substr($g64, $trackPosition+2, $trackSize);
       
       my $trackContentHex = unpack("H*", $trackContent);
       $trackContentHex =~ s/(..)/ $1/gc;
       my $trackContentBin = unpack("B*", $trackContent);
       
-      my $speedTableOffset = 8+4*$notracks + 4*$i;
-      my $speed = unpack("L", substr($g64, $speedTableOffset, 4));
-      # $p64data{$p64track} = [];
+      $trackSize *= 8;
       
-      if ($speed > 4)
+      if ($speed > 11)
       {
          my $tmp = substr($g64, $speed, $tracksizeHdr/4);
 	 my $tmp2 = unpack("B*", $tmp);
 	 $speed = "";
-	 while (length($speed) < 8*$trackSize)
+	 while (length($speed) < $trackSize)
 	 {
 	    if ($tmp2 =~ s/^00//)
 	    {
@@ -2957,7 +3261,15 @@ sub g64top64txt
       }
       else
       {
-         $speed = $speed x (8*$trackSize);
+         if ($isMFM == 1)
+         {
+            my $bitsToRemove = ord(substr($trackContent, -1, 1));
+            $trackContentBin = substr($trackContentBin, 0, length($trackContentBin) - $bitsToRemove);
+            $trackSize -= $bitsToRemove;
+         }
+
+      	 $speed = 0 if $speed >= 8;
+         $speed = $speed x $trackSize;
       }
 
       $ret .= "track $track\n";
@@ -2966,15 +3278,19 @@ sub g64top64txt
       my $num1 = $speed =~ tr/1//;
       my $num2 = $speed =~ tr/2//;
       my $num3 = $speed =~ tr/3//;
+      my $num4 = $speed =~ tr/4//;
+      my $num5 = $speed =~ tr/5//;
+      my $num6 = $speed =~ tr/6//;
+      my $num7 = $speed =~ tr/7//;
       
-      die if $num0+$num1+$num2+$num3 != 8*$trackSize;
-      my $factor = (5*$num3/307692)+(5*$num2/285714)+(5*$num1/266667)+(5*$num0/250000);
+      die if $num0+$num1+$num2+$num3+$num4+$num5+$num6+$num7 != $trackSize;
+      my $factor = 5*($num0*4e-6+$num1*3.75e-6+$num2*3.5e-6+$num3*3.25e-6+$num4*3e-6+$num5*2.75e-6+$num6*2.5e-6+$num7*2.25e-6);
       my $fluxPos = 1;      
 
       my $writeSplicePos = 0;
       $writeSplicePos = unpack "V", substr($g64, 8*$notracks + 16*$i, 4) if $haveExtHeader;
 
-      for (my $j=0; $j<8*$trackSize; $j++)
+      for (my $j=0; $j<$trackSize; $j++)
       {
          my $char = substr($trackContentBin, $j, 1);
 	 my $sped = substr($speed, $j, 1);
@@ -2991,19 +3307,35 @@ sub g64top64txt
 	 
 	 if ($sped eq '0')
 	 {
-	    $fluxPos += ( 16000000 / 250000 ) / $factor;
+	    $fluxPos += 64 / $factor;
 	 }
 	 if ($sped eq '1')
 	 {
-	    $fluxPos += ( 16000000 / 266667 ) / $factor;
+	    $fluxPos += 60 / $factor;
 	 }
 	 if ($sped eq '2')
 	 {
-	    $fluxPos += ( 16000000 / 285714 ) / $factor;
+	    $fluxPos += 56 / $factor;
 	 }
 	 if ($sped eq '3')
 	 {
-	    $fluxPos += ( 16000000 / 307692 ) / $factor;
+	    $fluxPos += 52 / $factor;
+	 }
+	 if ($sped eq '4')
+	 {
+	    $fluxPos += 48 / $factor;
+	 }
+	 if ($sped eq '5')
+	 {
+	    $fluxPos += 44 / $factor;
+	 }
+	 if ($sped eq '6')
+	 {
+	    $fluxPos += 40 / $factor;
+	 }
+	 if ($sped eq '7')
+	 {
+	    $fluxPos += 36 / $factor;
 	 }
       }
    }
@@ -3578,7 +3910,7 @@ sub getSpeedZone1
 
 sub fluxtobitstreamV1
 {
-   my ($flux, $speed, $rpm) = @_;
+   my ($flux, $speed, $rpm, $floppy8250) = @_;
    my $bits = "";
       
    
@@ -3588,6 +3920,7 @@ sub fluxtobitstreamV1
    my $bitcounter = 0;
    
    my $timePerBit = (4 - 0.25 * $speed)/1000000;
+   $timePerBit = (10/3 - 1/6 * $speed)/1000000 if $floppy8250;
    my $timeUntilFirstBit = $timePerBit/2;
    
    for (my $i=0; $i<@$flux; $i++)
@@ -3612,6 +3945,7 @@ sub fluxtobitstreamV1
       }
 
       $pulseactive = 2.5e-6;
+      $pulseactive = 1.5625e-6 if $speed >= 4;
       if ($add0)
       {
       	my $zerobits = "";
@@ -3638,6 +3972,11 @@ sub fluxtobitstreamV1
 sub padbitstream
 {
    my $bits = $_[0];
+   if (substr($bits, 0, 2) eq "//")
+   {
+      return substr($bits, 2);
+   }   
+
    my $orgBits = $bits;
    $bits =~ s/_//g;
    $bits =~ s/\///g;
@@ -3923,12 +4262,22 @@ sub parseRotationSpeedParameter
    $ret{verifyRange2} = 250;
    $ret{rpm} = 300;
    $ret{scpside} = 0;
+   $ret{nomfm} = 0;
+   $ret{floppy8250} = 0;
    
    my @range = split(",", $range);
    
    for my $range (@range)
    {
-      if ( $range =~ /^ad([0-3])$/i)
+      if ( $range =~ /^nomfm$/i)
+      {
+      	$ret{nomfm} = 1;
+      }
+      elsif ( $range =~ /^8250$/i)
+      {
+      	$ret{floppy8250} = 1;
+      }
+      elsif ( $range =~ /^ad([0-3])$/i)
       {
       	$ret{decoderalgorithm} = $1;
       }
@@ -3964,6 +4313,10 @@ sub parseRotationSpeedParameter
       {
       	$ret{speed}{default} = $1-0;
       }
+      elsif ( $range =~ /^s(1[0-1]+)$/i)
+      {
+      	$ret{speed}{default} = $1-0;
+      }
       elsif ( $range eq "sstd")
       {
          # 1..17=s3,18..24=s2,25..30=s1,31..35=s0,129..146=s3,147..152=s2,153..158=s1,159..163=s0
@@ -3993,6 +4346,7 @@ sub parseRotationSpeedParameter
          {
             $ret{speed}{$i} = $tmp{$i} unless exists $ret{speed}{$i};
          }
+      	 $ret{floppy8250} = 1;
       }
       elsif ( $range =~ /^scpside([0-2])$/i)
       {
@@ -4447,14 +4801,24 @@ sub fluxtobitstream
    my $ret;
    my $alg = $param->{decoderalgorithm};
    my $rpm = $param->{rpm};
+   my $nomfm = $param->{nomfm};
+   my $floppy8250 = $param->{floppy8250};
    
    $alg = 3 if $speed eq "m" && $alg < 3;
    $alg = 3 if $speed eq "a" && $alg < 3;
+   if (!$nomfm)
+   {
+      $alg = -1 if $speed == 8;
+      $alg = -1 if $speed == 9;
+      $alg = -1 if $speed == 10;
+      $alg = -1 if $speed == 11;
+   }
 
    $ret = fluxtobitstreamV3($flux, $speed, $param, $track, $level, $writeSplicePos) if $alg == 3;
    $ret = fluxtobitstreamV2($flux, $speed, $param, $track) if $alg == 2;
-   $ret = fluxtobitstreamV1($flux, $speed, $rpm) if $alg == 1;
-   $ret = fluxtobitstreamV1($flux, 1.5, $rpm) if $alg == 0;
+   $ret = fluxtobitstreamV1($flux, $speed, $rpm, $floppy8250) if $alg == 1;
+   $ret = fluxtobitstreamV1($flux, $speed >= 4 ? 5.5 : 1.5, $rpm, $floppy8250) if $alg == 0;
+   $ret = fluxtobitstreamMFMV1($flux, $speed, $rpm) if $alg == -1;
    
    $ret;
 }
@@ -5259,4 +5623,311 @@ sub parseMFMTrack
       $ret .= "\n   ;Padding\n   bytes $trackContentHex\n";
    }
    $ret . "end-track\n";
+}
+
+sub fluxtobitstreamMFMV1
+{
+   my ($flux, $speed, $rpm) = @_;
+   my $bits = "//";
+   
+   my $factor = 1;
+   $factor = 2 if $speed == 9;
+   $factor = 4 if $speed == 10;
+   $factor = 5/3 if $speed == 11;;
+   
+   for (my $i=0; $i<@$flux; $i++)
+   {
+      my $tmeToFlux = $flux->[$i] *3200000 * 300 / $rpm * $factor;
+
+         my $val = $tmeToFlux / 16;
+         
+         my $num = int(($val + 0.6) / 2 - 1);
+         $bits .= "0" x $num;
+         $bits .= "1";
+   }
+   
+   $bits;
+}
+
+sub parseMFMRawTrack
+{
+   my ($track, $speed) = @_;
+   my $ret = "";
+   
+   my $beginAt = 0;
+   my $syncA1 = ".100010010001001";
+   my $syncC2 = ".101001000100100";
+   my $syncA10 = "0100010010001001";
+   my $syncC20 = "0101001000100100";
+
+   {
+   	my $tmpTrack = $track . $track;
+   	
+   	my $search1 = "(?:" . ${syncA1} . ")+010101010101.{37}010101010101001";
+   	my $search2 = "(?:" . ${syncA1} . ")+010101010101";
+   	my $search3 = "(?:" . ${syncA1} . ")+";
+   	my $changed = 0;
+
+   	if ( $tmpTrack =~ m/^(.*?)($search1)(.*)$/ )
+   	{
+           $beginAt = length($1);
+           $tmpTrack = "$2$3$1";
+           $changed = 1;
+   	}
+   	elsif ( $tmpTrack =~ m/^(.*?)($search2)(.*)$/ )
+   	{
+           $beginAt = length($1);
+           $tmpTrack = "$2$3$1";
+           $changed = 1;
+   	}
+   	elsif ( $tmpTrack =~ m/^(.*?)($search3)(.*)$/ )
+   	{
+           $beginAt = length($1);
+           $tmpTrack = "$2$3$1";
+           $changed = 1;
+   	}
+   	
+   	if ($changed)
+   	{
+           $track = substr($tmpTrack, 0, length $track);
+   	}
+   	else
+   	{
+   	   return undef;
+   	}
+   }
+ 
+   my $state = 0;
+   my $bytesInState = 0;
+   my $buffer;
+   my $bufferType = 0;
+   my $syncDetectOn = -1;
+   my $crc;
+   my $sectorsize;
+   
+   my $subtrack2 = substr($track, 768);
+   my $subtrack = substr($track, 0, 768);
+
+   my $lastBit = substr($track, -1, 1);
+
+   while ( $subtrack ne "")
+   {
+   	if (length($subtrack) < 384)
+   	{
+           $subtrack .= substr($subtrack2, 0, 768);
+           $subtrack2 = substr($subtrack2, 768);
+
+   	}
+   	
+   	my $actualType;
+   	my $bits;
+   	my $flush = 0;
+   	my $comment;
+   	my $instruction;
+   	
+   	my $part = $subtrack;
+   	my $bbits;
+   	if ( $syncDetectOn && $part =~ /^(.+?)($syncA1)/ )
+   	{
+   	   $part = $1;
+   	}
+   	if (length($part) >= 16)
+   	{
+   	   $bits = substr($part, 0, 16);
+   	   my $trackBin = pack("B*", $bits);
+	   $bbits = unpack("H*", $trackBin);
+   	   $actualType = 4;
+   	}
+   	else
+   	{
+   	   $bits = $part;
+   	   $actualType = 1;
+   	}
+   	
+   	if ($syncDetectOn && $bits eq $syncA10)
+   	{
+   	   $actualType = 5;
+   	   $state = 1;
+   	   $bytesInState = -1;
+   	   $crc = 0xcdb4;
+   	}
+   	elsif (length($bits) % 2 == 0)
+   	{
+   	   my $mbits = $bits;
+   	   $mbits =~ s/(.)(.)/$2/g;
+   	   my $exp = toMFMBits($lastBit, $mbits);
+   	   
+   	   if ( $exp eq $bits )
+   	   {
+   	      $bbits = $mbits;
+   	      
+   	      if ($actualType == 4)
+   	      {
+   	         my $trackBin = pack("B*", $mbits);
+	         $bbits = unpack("H*", $trackBin);
+                 $actualType = 3;
+   	      }
+   	      else
+   	      {
+   	         $actualType = 2;
+   	      }
+   	      
+   	   }
+   	}
+   	
+   	
+        $state = 5 if length($bits) != 16;
+
+   	if ($state == 1)
+   	{
+           if ($bytesInState == 0 )
+           {
+              if ($actualType == 3)
+              {
+              	$state = 4;
+              	$state = 2 if $bbits eq "fd";
+              	$state = 2 if $bbits eq "fe";
+              	$state = 2 if $bbits eq "fe";
+              	$state = 2 if $bbits eq "ff";
+
+              	$state = 3 if $bbits eq "f8" && defined $sectorsize;
+              	$state = 3 if $bbits eq "f9" && defined $sectorsize;
+              	$state = 3 if $bbits eq "fa" && defined $sectorsize;
+              	$state = 3 if $bbits eq "fb" && defined $sectorsize;
+              }
+              else
+              {
+              	 $state = 4;
+              }
+           }
+           $bytesInState++;
+   	}
+   	
+   	if ($state == 2)
+   	{
+           $flush = 1 if $bytesInState != 7;
+           
+           $instruction = "  begin-checksum" if $bytesInState == 1;
+           $instruction = "  end-checksum" if $bytesInState == 8;
+
+   	   my $mbits = $bits;
+   	   $mbits =~ s/(.)(.)/$2/g;
+           $crc = crc16($crc, pack("B*", $mbits), 0x1021) if $bytesInState < 6;
+
+           $comment .= "Header" if $bytesInState == 1;
+           $comment .= "Track" if $bytesInState == 2;
+           $comment .= "Side" if $bytesInState == 3;
+           $comment .= "Sector" if $bytesInState == 4;
+           $comment .= "Sectorsize" if $bytesInState == 5;
+           $sectorsize = 128 << ord(pack("B*", $mbits)) if $bytesInState == 5;
+           
+           $comment .= "CRC" if $bytesInState == 6;
+           $comment .= "Gap" if $bytesInState == 8;
+           $state = 4 if $bytesInState == 8;
+           
+           if ($bytesInState == 8)
+           {
+              my $is = $buffer;
+              $is =~ s/ //g;
+              my $exp = sprintf "%04x", $crc;
+              $comment = "Wrong checksum above, should be $exp - Gap is following" unless $is eq $exp;
+           }
+           
+           $bytesInState++;
+   	}
+   	
+   	if ($state == 3)
+   	{
+           $instruction = "  begin-checksum" if $bytesInState == 1;
+           $instruction = "  end-checksum" if $bytesInState == 4+$sectorsize;
+
+   	   my $mbits = $bits;
+   	   $mbits =~ s/(.)(.)/$2/g;
+           $crc = crc16($crc, pack("B*", $mbits), 0x1021) if $bytesInState < 2+$sectorsize;
+
+           $flush = 1 if $bytesInState == 1;
+           $comment = "Data" if $bytesInState == 1;
+
+           $flush=1 if $bytesInState == 2;
+           $comment = "Sector content" if $bytesInState == 2;
+
+           $flush=1 if $bytesInState == 2+$sectorsize;
+           $comment = "checksum" if $bytesInState == 2+$sectorsize;
+
+           $flush=1 if $bytesInState == 4+$sectorsize;
+           $comment = "Gap" if $bytesInState == 4+$sectorsize;
+           $state = 4 if $bytesInState ==4+$sectorsize;
+   		
+           if ($bytesInState == 4+$sectorsize)
+           {
+              my $is = $buffer;
+              $is =~ s/ //g;
+              my $exp = sprintf "%04x", $crc;
+              $comment = "Wrong checksum above, should be $exp - Gap is following" unless $is eq $exp;
+           }
+
+           $sectorsize = undef if $bytesInState == 4+$sectorsize;
+           $bytesInState++;
+   	}
+
+   	
+        $subtrack = substr($subtrack, length $bits);
+        $lastBit = substr($bits, -1);
+
+        if ($bufferType != $actualType || $flush)
+        {
+           if ($bufferType == 1) { $ret .= "   bits $buffer\n"; $bufferType = 0; $buffer = ""; }
+           if ($bufferType == 2) { $ret .= "   mfm-bits $buffer\n"; $bufferType = 0; $buffer = ""; }
+           if ($bufferType == 3) { $ret .= "   mfm-bytes$buffer\n"; $bufferType = 0; $buffer = ""; }
+           if ($bufferType == 4) { $ret .= "   bytes$buffer\n"; $bufferType = 0; $buffer = ""; }
+           if ($actualType == 5) { $ret .= "\n"; $bufferType = 0; $buffer = ""; }
+        }
+        
+        $ret .= "$instruction\n" if $instruction;
+        $ret .= "   ; $comment\n" if $comment;
+
+           if ($actualType == 1) { $buffer .= $bits; }
+           if ($actualType == 2) { $buffer .= $bbits; }
+           if ($actualType == 3) { $buffer .= " " . $bbits; }
+           if ($actualType == 4) { $buffer .= " " . $bbits; }
+           if ($actualType == 5) { $ret .= "   mfmsnyc-a1\n"; }
+        $bufferType = $actualType;
+   }
+
+   if ($bufferType == 1) { $ret .= "   bits $buffer\n"; $bufferType = 0; }
+   if ($bufferType == 2) { $ret .= "   mfm-bits $buffer\n"; $bufferType = 0; }
+   if ($bufferType == 3) { $ret .= "   mfm-bytes$buffer\n"; $bufferType = 0; }
+   if ($bufferType == 4) { $ret .= "   bytes$buffer\n"; $bufferType = 0; }
+   return "   begin-at $beginAt\n   speed $speed\n$ret\nend-track\n";
+}
+
+sub crc16 {
+   my ($crc, $string, $poly) = @_;
+   for my $c ( unpack 'C*', $string ) {
+      $crc ^= ($c << 8);
+      for ( 0 .. 7 ) {
+         my $carry = $crc & 0x8000;
+         $crc = ($crc << 1) & 0xffff;
+         $crc ^= $poly if $carry;
+      }
+   }
+   return $crc;
+}
+
+sub toMFMBits
+{
+   my ($lastbit, $string) = @_;
+   
+   my $ret = "";
+   my $lastBit = $lastbit;
+   
+   for (my $i=0; $i<length($string); $i++)
+   {
+	    my $actBit = substr($string, $i, 1);
+            my $clock = ( $lastBit || $actBit) ? "0": "1";
+            $ret .= $clock;
+	    $ret .= $actBit;
+	    $lastBit = $actBit;
+   }
+   $ret;
 }
