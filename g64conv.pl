@@ -125,7 +125,10 @@ elsif ($from =~ /\.g64$/i && $to =~ /\.g64$/i)
 {
    my $g64 = readfileRaw($from);
    my $txt;
-   $txt = g64totxt($g64, 0);
+   my $tmp = "0";
+   $tmp = "0raw" if $level eq "raw";
+   $tmp = "0block" if $level eq "block";
+   $txt = g64totxt($g64, $tmp);
    $g64 = txttog64($txt, undef, "1541");
    writefileRaw($g64, $to);
 }
@@ -133,7 +136,10 @@ elsif ($from =~ /\.g71$/i && $to =~ /\.g71$/i)
 {
    my $g64 = readfileRaw($from);
    my $txt;
-   $txt = g64totxt($g64, 0);
+   my $tmp = "0";
+   $tmp = "0raw" if $level eq "raw";
+   $tmp = "0block" if $level eq "block";
+   $txt = g64totxt($g64, $tmp);
    $g64 = txttog64($txt, undef, "1571");
    writefileRaw($g64, $to);
 }
@@ -1314,7 +1320,19 @@ sub g64totxt
             $trackRet .= "   format-code $formatCode\n";
             $trackRet .= "   format-extension $formatExtension\n";
          }
-      	 if ($level eq "00" || $isMFM == 1)
+      	 if ($isMFM == 1 && $level eq "0block")
+      	 {
+            my $trackContentBin = unpack("B*", $trackContent);
+            my $bitsToRemove = ord(substr($trackContent, -1, 1));
+            $trackContentBin = substr($trackContentBin, 0, length($trackContentBin) - $bitsToRemove);
+            $trackSize -= $bitsToRemove / 8;
+      	    ...;
+      	 }
+      	 elsif ($isMFM == 2 && $level eq "0raw")
+      	 {
+      	    ...;
+      	 }
+      	 elsif ($level eq "00" || $isMFM == 1)
       	 {
             my $trackContentBin = unpack("B*", $trackContent);
             if ($isMFM == 1)
@@ -1327,8 +1345,9 @@ sub g64totxt
       	 }
       	 else
       	 {
+      	    $trackRet .= "   MFM-Track\n" if $isMFM == 2;
             $trackRet .= "   speed $speed\n   bytes$trackContentHex\n";
-	}
+	 }
 	$trackRet .= "end-track\n\n";
       }
       else
@@ -1343,7 +1362,6 @@ sub g64totxt
             my $bitsToRemove = ord(substr($trackBin, -1, 1));
             $trackContentBin = substr($trackContentBin, 0, length($trackContentBin) - $bitsToRemove);
             $trackSize -= $bitsToRemove / 8;
-#            $trackSize = length $trackContentBin;
          }
          
          
@@ -1386,6 +1404,7 @@ sub g64totxt
 	    $tmp .= "   begin-at 0\n   bytes$trackContentHex\n" unless $isMFM == 1;
 	    $tmp .= "   begin-at 0\n   bits $trackContentBin\n" if $isMFM == 1;
 	    $tmp .= "end-track\n\n";
+	    $trackRet .= $tmp;
 	 }
 	 else
 	 {
@@ -3758,6 +3777,29 @@ sub extractRotation
       $ret{rpm} = 60 / $fluxSum * $content->{sck};
       return \%ret;
    }
+   
+   if ($rotation == 1000)
+   {
+      my $prevIndex1 = 0;
+      my $prevIndex2 = @$refFlux;
+      
+      print "   Using rotation $prevIndex1..$prevIndex2 for track $track\n";
+   	
+      my $fluxSum = $refFlux->[$prevIndex2-1]{FluxSum};
+      
+
+      $ret{index1} = $prevIndex1;
+      $ret{index2} = $prevIndex2;
+      
+      $ret{adjustFlux1} = 0;
+      $ret{adjustFlux2} = 0;
+      
+      $ret{fluxSum} = $fluxSum;
+      $ret{tracktime} = $fluxSum / $content->{sck};
+      $ret{rpm} = 60 / $fluxSum * $content->{sck};
+      return \%ret;
+   }
+   
 
    my $noRotations = scalar @$refIndicies;
    my $rotNo = -1;
@@ -5634,7 +5676,7 @@ sub fluxtobitstreamMFMV1
    $factor = 2 if $speed == 9;
    $factor = 4 if $speed == 10;
    $factor = 5/3 if $speed == 11;;
-   
+ 
    for (my $i=0; $i<@$flux; $i++)
    {
       my $tmeToFlux = $flux->[$i] *3200000 * 300 / $rpm * $factor;
@@ -5727,7 +5769,11 @@ sub parseMFMRawTrack
    	
    	my $part = $subtrack;
    	my $bbits;
-   	if ( $syncDetectOn && $part =~ /^(.+?)($syncA1)/ )
+   	if ( $part =~ /^(.+?)($syncA1)/ )
+   	{
+   	   $part = $1;
+   	}
+   	if ( $state == 4 && $part =~ /^(.{1,15})($syncC2)/ )
    	{
    	   $part = $1;
    	}
@@ -5747,10 +5793,30 @@ sub parseMFMRawTrack
    	if ($syncDetectOn && $bits eq $syncA10)
    	{
    	   $actualType = 5;
+   	   if ($state == 6)
+   	   {
+   	   	$state = 7;
+   	   }
+   	   elsif ($state == 7)
+   	   {
+   	   	$state = 1;
+   	   }
+   	   elsif ($state == 1)
+   	   {
+   	   	$state = 4;
+   	   }
+   	   else
+   	   {
+   	   	$state = 6;
+   	   }
    	   $state = 1;
    	   $bytesInState = -1;
    	   $crc = 0xcdb4;
    	}
+   	if ($bits eq $syncC20)
+   	{
+   	   $actualType = 6;
+        }
    	elsif (length($bits) % 2 == 0)
    	{
    	   my $mbits = $bits;
@@ -5881,6 +5947,7 @@ sub parseMFMRawTrack
            if ($bufferType == 3) { $ret .= "   mfm-bytes$buffer\n"; $bufferType = 0; $buffer = ""; }
            if ($bufferType == 4) { $ret .= "   bytes$buffer\n"; $bufferType = 0; $buffer = ""; }
            if ($actualType == 5) { $ret .= "\n"; $bufferType = 0; $buffer = ""; }
+           if ($actualType == 6) { $ret .= "\n"; $bufferType = 0; $buffer = ""; }
         }
         
         $ret .= "$instruction\n" if $instruction;
@@ -5891,6 +5958,7 @@ sub parseMFMRawTrack
            if ($actualType == 3) { $buffer .= " " . $bbits; }
            if ($actualType == 4) { $buffer .= " " . $bbits; }
            if ($actualType == 5) { $ret .= "   mfmsnyc-a1\n"; }
+           if ($actualType == 6) { $ret .= "   mfmsnyc-c2\n"; }
         $bufferType = $actualType;
    }
 
