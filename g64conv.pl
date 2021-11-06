@@ -1310,7 +1310,7 @@ sub g64totxt
       my $trackRet = "track $track\n";
       if ($level == 0)
       {
-         $trackRet .= "   ; length $trackSize\n";
+      	 $trackRet = "";
          if ($haveExtHeader)
          {
             $trackRet .= "   write-splice-position $writeSplicePos\n" if $writeSplicePos;
@@ -1326,6 +1326,7 @@ sub g64totxt
             my $bitsToRemove = ord(substr($trackContent, -1, 1));
             $trackContentBin = substr($trackContentBin, 0, length($trackContentBin) - $bitsToRemove);
             $trackSize -= $bitsToRemove / 8;
+            
       	    ...;
       	 }
       	 elsif ($isMFM == 2 && $level eq "0raw")
@@ -1355,6 +1356,9 @@ sub g64totxt
             $trackRet .= "   speed $speed\n   bytes$trackContentHex\n";
 	 }
 	$trackRet .= "end-track\n\n";
+
+        $trackRet = "track $track\n   ; length $trackSize\n$trackRet";
+         ###$trackRet = "   ; length $trackSize\n$trackRet ";
       }
       else
       {
@@ -1410,6 +1414,7 @@ sub g64totxt
 	    $tmp .= "   begin-at 0\n   bytes$trackContentHex\n" unless $isMFM == 1;
 	    $tmp .= "   begin-at 0\n   bits $trackContentBin\n" if $isMFM == 1;
 	    $tmp .= "end-track\n\n";
+
 	    $trackRet .= $tmp;
 	 }
 	 else
@@ -1422,7 +1427,6 @@ sub g64totxt
                $trackRet .= "   format-extension $formatExtension\n";
             }
 
-            $trackRet .= "   ; length $trackSize\n";
 	    $trackRet .= $tmp;
 	 }
 	 
@@ -5756,6 +5760,7 @@ sub parseMFMRawTrack
    my $syncDetectOn = -1;
    my $crc;
    my $sectorsize;
+   my ($cTrk, $cSide, $cSect);
    
    my $subtrack2 = substr($track, 768);
    my $subtrack = substr($track, 0, 768);
@@ -5775,6 +5780,7 @@ sub parseMFMRawTrack
    	my $bits;
    	my $flush = 0;
    	my $comment;
+   	my $comment2;
    	my $instruction;
    	
    	my $part = $subtrack;
@@ -5819,10 +5825,12 @@ sub parseMFMRawTrack
    	   {
    	   	$state = 6;
    	   }
-   	   $state = 1;
+   	   ### $state = 1;
    	   $bytesInState = -1;
    	   $crc = 0xcdb4;
    	}
+   	$state = 0 if $syncDetectOn && $bits ne $syncA10 && $state == 6;
+   	$state = 0 if $syncDetectOn && $bits ne $syncA10 && $state == 7;
    	if ($bits eq $syncC20)
    	{
    	   $actualType = 6;
@@ -5892,12 +5900,16 @@ sub parseMFMRawTrack
 
            $comment .= "Header" if $bytesInState == 1;
            $comment .= "Track" if $bytesInState == 2;
+           $cTrk = ord(pack("B*", $mbits)) if $bytesInState == 2;
            $comment .= "Side" if $bytesInState == 3;
+           $cSide = ord(pack("B*", $mbits)) if $bytesInState == 3;
            $comment .= "Sector" if $bytesInState == 4;
-           $comment .= "Sectorsize" if $bytesInState == 5;
+           $cSect = ord(pack("B*", $mbits)) if $bytesInState == 4;
            $sectorsize = 128 << ord(pack("B*", $mbits)) if $bytesInState == 5;
+           $comment = "Sectorsize $sectorsize" if $bytesInState == 5;
            
            $comment .= "CRC" if $bytesInState == 6;
+           $comment2 = "Trk $cTrk Sec $cSect Side $cSide" if $bytesInState == 6;
            $comment .= "Gap" if $bytesInState == 8;
            $state = 4 if $bytesInState == 8;
            
@@ -5942,7 +5954,7 @@ sub parseMFMRawTrack
               $comment = "Wrong checksum above, should be $exp - Gap is following" unless $is eq $exp;
            }
 
-           $sectorsize = undef if $bytesInState == 4+$sectorsize;
+           $cSect = $cSide = $cTrk = $sectorsize = undef if $bytesInState == 4+$sectorsize;
            $bytesInState++;
    	}
 
@@ -5961,6 +5973,7 @@ sub parseMFMRawTrack
         }
         
         $ret .= "$instruction\n" if $instruction;
+        $ret .= "   ; $comment2\n" if $comment2;
         $ret .= "   ; $comment\n" if $comment;
 
            if ($actualType == 1) { $buffer .= $bits; }
