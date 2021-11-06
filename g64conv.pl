@@ -1330,7 +1330,13 @@ sub g64totxt
       	 }
       	 elsif ($isMFM == 2 && $level eq "0raw")
       	 {
-      	    ...;
+            my $trackContentBin = unpack("B*", $trackContent);
+      	    my $tmp = parseMFMTrackAsBlock($trackContentBin);
+      	    
+      	    $trackRet .= "   speed 8\n $tmp";
+      	    
+      	    #die $trackRet;
+      	    # ...;
       	 }
       	 elsif ($level eq "00" || $isMFM == 1)
       	 {
@@ -2549,27 +2555,31 @@ sub txttog64
             my $trackContentBin;
             if ($par eq "")
             {
-            	$trackContentBin = sprintf "%016b\n", $mfmchecksum;
+            	$trackContentBin = sprintf "%016b", $mfmchecksum;
             }
             else
             {
                my $trackBin = pack("H*", $par);
    	       $trackContentBin = unpack("B*", $trackBin);
             }
+            my $toAdd = "";
    
             my $actBit = substr($trackContentBin, 0, 1);
             my $lastBit = substr($curTrack, -1);
             my $clock = ( $lastBit || $actBit) ? "0": "1";
-            $curTrack .= $clock;
-   	    $curTrack .= substr($trackContentBin, 0, 1);
+            $toAdd .= $clock;
+   	    $toAdd .= $actBit;
    	    for (my $i=1; $i<length($trackContentBin); $i++)
    	    {
    	       my $lastBit = substr($trackContentBin, $i-1, 1);
    	       $actBit = substr($trackContentBin, $i, 1);
+
                my $clock = ( $lastBit || $actBit) ? "0": "1";
-               $curTrack .= $clock;
-   	       $curTrack .= $actBit;
+               $toAdd .= $clock;
+   	       $toAdd .= $actBit;
    	    }
+   	    
+   	    $curTrack .= $toAdd;
 	 }
 	 
 	 $checksumBlock = 3 if $checksumBlock == 1;
@@ -5997,5 +6007,114 @@ sub toMFMBits
 	    $ret .= $actBit;
 	    $lastBit = $actBit;
    }
+   $ret;
+}
+
+sub parseMFMTrackAsBlock
+{
+   my ($track) = @_;
+
+   my $ret = ""; # "   speed 8\n";
+
+   my @sectors = ();
+
+   my $trackBin = pack("B*", $track);
+   my $noSectors = ord $trackBin;
+   my $version = ord substr($trackBin, 1, 1);
+   die if $version;
+   
+   my $dataOff = 162;
+   my @header = ();
+   my @data = ();
+   
+   my $len = 0;
+
+   for (my $i=0; $i<$noSectors; $i++)
+   {
+      my $hdr = substr($trackBin, 2+5*$i, 4);
+      my $sizeRaw = ord substr($hdr, 3, 1);
+      my $size = 128 << $sizeRaw;
+      
+      my $data = substr($trackBin, $dataOff, $size);
+      $dataOff += $size;
+      
+      push (@header, $hdr);
+      push (@data, $data);
+      
+      $len += 50 + $size;
+   }
+   
+   my $gapSizeTotal = 6250 - $len;
+   die if $gapSizeTotal < 0;
+
+   my $gapPerSector = int($gapSizeTotal / $noSectors);
+   
+   my $gap00PerSector;
+   if ($gapPerSector >= 12)
+   {
+      $gap00PerSector = 12;
+   }
+   elsif ($gapPerSector > 6)
+   {
+      $gap00PerSector = int($gapPerSector / 2);
+   }
+   elsif ($gapPerSector >= 3)
+   {
+      $gap00PerSector = 3;
+   }
+   elsif ($gapPerSector >= 1)
+   {
+      $gap00PerSector = 1;
+   }
+   else
+   {
+   	die;
+   }
+   my $gap4ePerSector = $gapPerSector - $gap00PerSector;
+   
+   die if $gap4ePerSector < 0;
+   
+   my $gapEndSize = $gapSizeTotal - $noSectors * $gapPerSector;
+   
+   my $gap00 = "";
+   $gap00 = "   mfm-bytes" . (" 00" x $gap00PerSector) . "\n" if $gap00PerSector > 0;
+   my $gap4e = "";
+   $gap4e = "   mfm-bytes" . (" 4e" x $gap4ePerSector) . "\n"if $gap4ePerSector > 0;
+   my $gapEnd = "";
+   $gapEnd = "   mfm-bytes" . (" 4e" x $gapEndSize) . "\n"if $gapEndSize > 0;
+   
+   for (my $i=0; $i<$noSectors; $i++)
+   {
+      my $hdr = $header[$i];
+      my $data = $data[$i];
+      
+      my $tmp = "";
+      $tmp .= $gap00;
+      $tmp .= "   mfmsnyc-a1\n";
+      $tmp .= "   mfmsnyc-a1\n";
+      $tmp .= "   mfmsnyc-a1\n";
+      $tmp .= "   begin-checksum\n";
+      $tmp .= "   mfm-bytes fe\n";
+      $tmp .= "   mfm-bytes ". unpack("H*", $hdr) . "\n";
+      $tmp .= "   mfm-checksum\n";
+      $tmp .= "   end-checksum\n";
+      $tmp .= "   mfm-bytes". (" 4e" x 22) . "\n";
+      $tmp .= "   mfm-bytes". (" 00" x 12) . "\n";
+      $tmp .= "   mfmsnyc-a1\n";
+      $tmp .= "   mfmsnyc-a1\n";
+      $tmp .= "   mfmsnyc-a1\n";
+      $tmp .= "   begin-checksum\n";
+      $tmp .= "   mfm-bytes fb\n";
+      $tmp .= "   mfm-bytes ". unpack("H*", $data) . "\n";
+      $tmp .= "   mfm-checksum\n";
+      $tmp .= "   end-checksum\n";
+      
+      $tmp .= $gap4e;
+      
+      $ret .= $tmp;
+   }
+   $ret .= $gapEnd;
+
+
    $ret;
 }
