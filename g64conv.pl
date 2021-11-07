@@ -6397,10 +6397,16 @@ sub parseMFMTrackAsRaw
       $error |= 0x4 unless defined $blockdata;
       # $error |= 0x10 if $ddam;
       
+      unless (defined $blockdata)
+      {
+          $cCrcBlkOk = 1;
+          $blockdata = "\0" x $cSectorsize2;
+      }
+      
       my $curHeader = chr($cTrk) . chr($cSide) . chr($cSect) . chr($cSectorsize1) . chr($error);
       
       $hdr .= $curHeader;
-      $data .= $blockdata if defined $blockdata;
+      $data .= $blockdata;
    }
    
    $hdr .= "\0" x (5*(32-@blocks));
