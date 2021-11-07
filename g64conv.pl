@@ -1327,7 +1327,9 @@ sub g64totxt
             $trackContentBin = substr($trackContentBin, 0, length($trackContentBin) - $bitsToRemove);
             $trackSize -= $bitsToRemove / 8;
             
-      	    ...;
+      	    my $tmp = parseMFMTrackAsRaw($trackContentBin, $track);
+      	    
+      	    $trackRet .= $tmp;
       	 }
       	 elsif ($isMFM == 2 && $level eq "0raw")
       	 {
@@ -1335,9 +1337,6 @@ sub g64totxt
       	    my $tmp = parseMFMTrackAsBlock($trackContentBin);
       	    
       	    $trackRet .= "   speed 8\n $tmp";
-      	    
-      	    #die $trackRet;
-      	    # ...;
       	 }
       	 elsif ($level eq "00" || $isMFM == 1)
       	 {
@@ -6130,4 +6129,300 @@ sub parseMFMTrackAsBlock
 
 
    $ret;
+}
+
+
+
+sub parseMFMTrackAsRaw
+{
+   my ($track, $trackNo) = @_;
+   
+   my $beginAt = 0;
+   my $syncA1 = ".100010010001001";
+   my $syncA10 = "0100010010001001";
+
+   {
+   	my $tmpTrack = $track . $track;
+   	
+   	my $search2 = "(?:" . ${syncA1} . ")+010101010101";
+   	my $search3 = "(?:" . ${syncA1} . ")+";
+   	my $changed = 0;
+
+        if ( $tmpTrack =~ m/^(.*?)($search2)(.*)$/ )
+   	{
+           $beginAt = length($1);
+           $tmpTrack = "$2$3$1";
+           $changed = 1;
+   	}
+   	elsif ( $tmpTrack =~ m/^(.*?)($search3)(.*)$/ )
+   	{
+           $beginAt = length($1);
+           $tmpTrack = "$2$3$1";
+           $changed = 1;
+   	}
+   	
+   	if ($changed)
+   	{
+           $track = substr($tmpTrack, 0, length $track);
+   	}
+   	else
+   	{
+   	   return undef;
+   	}
+   }
+ 
+   my $state = 0;
+   my $bytesInState = 0;
+   my $buffer;
+   my $bufferType = 0;
+   my $syncDetectOn = -1;
+   my $crc;
+   my ($cTrk, $cSide, $cSect, $cCrcHdrOk, $cSectorsize1, $cSectorsize2);
+   my $blockdata;
+   
+   my $subtrack2 = substr($track, 768);
+   my $subtrack = substr($track, 0, 768);
+
+   my $lastBit = substr($track, -1, 1);
+   
+   my @blocks = ();
+
+   while ( $subtrack ne "")
+   {
+   	if (length($subtrack) < 384)
+   	{
+           $subtrack .= substr($subtrack2, 0, 768);
+           $subtrack2 = substr($subtrack2, 768);
+   	}
+   	
+   	my $actualType;
+   	my $bits;
+   	my $flush = 0;
+   	
+   	my $part = $subtrack;
+   	my $bbits;
+   	if ( $part =~ /^(.+?)($syncA1)/ )
+   	{
+   	   $part = $1;
+   	}
+   	if (length($part) >= 16)
+   	{
+   	   $bits = substr($part, 0, 16);
+   	   my $trackBin = pack("B*", $bits);
+	   $bbits = unpack("H*", $trackBin);
+   	   $actualType = 4;
+   	}
+   	else
+   	{
+   	   $bits = $part;
+   	   $actualType = 1;
+   	}
+   	
+   	if ($syncDetectOn && $bits eq $syncA10)
+   	{
+   	   $actualType = 5;
+   	   if ($state == 6)
+   	   {
+   	   	$state = 7;
+   	   }
+   	   elsif ($state == 7)
+   	   {
+   	   	$state = 1;
+   	   }
+   	   elsif ($state == 1)
+   	   {
+   	   	$state = 4;
+   	   }
+   	   else
+   	   {
+   	   	$state = 6;
+   	   }
+   	   ### $state = 1;
+   	   $bytesInState = -1;
+   	   $crc = 0xcdb4;
+   	}
+   	$state = 0 if $syncDetectOn && $bits ne $syncA10 && $state == 6;
+   	$state = 0 if $syncDetectOn && $bits ne $syncA10 && $state == 7;
+        if (length($bits) % 2 == 0)
+   	{
+   	   my $mbits = $bits;
+   	   $mbits =~ s/(.)(.)/$2/g;
+   	   my $exp = toMFMBits($lastBit, $mbits);
+   	   
+   	   #if ( $exp eq $bits )
+   	   {
+   	      $bbits = $mbits;
+   	      
+   	      if ($actualType == 4)
+   	      {
+   	         my $trackBin = pack("B*", $mbits);
+	         $bbits = unpack("H*", $trackBin);
+                 $actualType = 3;
+   	      }
+   	   }
+   	}
+   	
+   	
+        $state = 5 if length($bits) != 16;
+
+   	if ($state == 1)
+   	{
+           if ($bytesInState == 0 )
+           {
+              if ($actualType == 3)
+              {
+              	$state = 4;
+              	$state = 2 if $bbits eq "fd";
+              	$state = 2 if $bbits eq "fe";
+              	$state = 2 if $bbits eq "fe";
+              	$state = 2 if $bbits eq "ff";
+
+              	$state = 3 if $bbits eq "f8" && defined $cSectorsize2;
+              	$state = 3 if $bbits eq "f9" && defined $cSectorsize2;
+              	$state = 3 if $bbits eq "fa" && defined $cSectorsize2;
+              	$state = 3 if $bbits eq "fb" && defined $cSectorsize2;
+              }
+              else
+              {
+              	 $state = 4;
+              }
+           }
+           $bytesInState++;
+   	}
+   	
+   	if ($state == 2)
+   	{
+           $flush = 1 if $bytesInState != 7;
+           
+   	   my $mbits = $bits;
+   	   $mbits =~ s/(.)(.)/$2/g;
+           $crc = crc16($crc, pack("B*", $mbits), 0x1021) if $bytesInState < 6;
+           if ($bytesInState == 1)
+           {
+              if (defined $cCrcHdrOk)
+              {
+             	push (@blocks, [$cTrk,$cSide,$cSect,$cSectorsize1,$cSectorsize2,$cCrcHdrOk,0,undef]);
+              }
+              $cTrk=$cSide=$cSect=$cSectorsize1=$cSectorsize2==undef  ;
+           }
+           $cTrk = ord(pack("B*", $mbits)) if $bytesInState == 2;
+           $cSide = ord(pack("B*", $mbits)) if $bytesInState == 3;
+           $cSect = ord(pack("B*", $mbits)) if $bytesInState == 4;
+           $cSectorsize1 = ord(pack("B*", $mbits)) if $bytesInState == 5;
+           $cSectorsize2 = 128 << ord(pack("B*", $mbits)) if $bytesInState == 5;
+           
+           $state = 4 if $bytesInState == 8;
+           
+           if ($bytesInState == 8)
+           {
+              my $is = $buffer;
+              $is =~ s/ //g;
+              my $exp = sprintf "%04x", $crc;
+              $cCrcHdrOk = $is eq $exp;
+           }
+           
+           $bytesInState++;
+   	}
+   	
+   	if ($state == 3)
+   	{
+   	   my $mbits = $bits;
+   	   $mbits =~ s/(.)(.)/$2/g;
+           $crc = crc16($crc, pack("B*", $mbits), 0x1021) if $bytesInState < 2+$cSectorsize2;
+
+           $flush = 1 if $bytesInState == 1;
+           $flush=1 if $bytesInState == 2;
+           $flush=1 if $bytesInState == 2+$cSectorsize2;
+           $blockdata = $buffer if $bytesInState == 2+$cSectorsize2;
+           $flush=1 if $bytesInState == 4+$cSectorsize2;
+           $state = 4 if $bytesInState ==4+$cSectorsize2;
+   		
+           if ($bytesInState == 4+$cSectorsize2)
+           {
+              my $is = $buffer;
+              $is =~ s/ //g;
+              my $exp = sprintf "%04x", $crc;
+              my $cCrcBlkOk = $is eq $exp;
+              
+              #print "DEBUG: $cTrk $cSide $cSect $cSectorsize ".(0+$cCrcHdrOk) . " ". (0+$cCrcBlkOk) . "\n";
+              #print length($blockdata)."\n";
+              #print "$blockdata\n";
+              
+             if (defined $cCrcHdrOk)
+             {
+             	push (@blocks, [$cTrk,$cSide,$cSect,$cSectorsize1,$cSectorsize2,$cCrcHdrOk,$cCrcBlkOk,pack("H*", $blockdata)]);
+             }
+              
+              $cTrk=$cSide=$cSect=$cSectorsize1=$cSectorsize2=$cCrcHdrOk=$cCrcBlkOk=undef;
+           }
+
+           $cSect = $cSide = $cTrk = $cSectorsize1 = $cSectorsize2 = undef if $bytesInState == 4+$cSectorsize2;
+           $bytesInState++;
+   	}
+
+   	
+        $subtrack = substr($subtrack, length $bits);
+        $lastBit = substr($bits, -1);
+
+        if ($bufferType != $actualType || $flush)
+        {
+           $bufferType = 0; $buffer = "";
+        }
+        
+           if ($actualType == 1) { $buffer .= $bits; }
+           if ($actualType == 2) { $buffer .= $bbits; }
+           if ($actualType == 3) { $buffer .= $bbits; }
+           if ($actualType == 4) { $buffer .= $bbits; }
+        $bufferType = $actualType;
+   }
+   
+   if (defined $cCrcHdrOk)
+   {
+      push (@blocks, [$cTrk,$cSide,$cSect,$cSectorsize1,$cSectorsize2,$cCrcHdrOk,0,undef]);
+   }
+
+   die if @blocks > 32;
+   
+   my $hdr = "";
+   my $data = "";
+   
+   for (my $i=0; $i<@blocks; $i++)
+   {
+      my $cCrcBlkOk;
+      my $blockdata;
+      ($cTrk,$cSide,$cSect,$cSectorsize1,$cSectorsize2,$cCrcHdrOk,$cCrcBlkOk,$blockdata) = @{$blocks[$i]};
+      my $error = 0;
+      $error |= 0x1 unless $cCrcHdrOk;
+      $error |= 0x2 unless $cCrcBlkOk;
+      $error |= 0x4 unless defined $blockdata;
+      # $error |= 0x10 if $ddam;
+      
+      my $curHeader = chr($cTrk) . chr($cSide) . chr($cSect) . chr($cSectorsize1) . chr($error);
+      
+      $hdr .= $curHeader;
+      $data .= $blockdata if defined $blockdata;
+   }
+   
+   $hdr .= "\0" x (5*(32-@blocks));
+   
+   my $hdr0 = chr(scalar @blocks) . chr(0);
+   
+      my $s = 21;
+      $s = 19 if $trackNo >= 18;
+      $s = 18 if $trackNo >= 25;
+      $s = 17 if $trackNo >= 31;
+      
+      my $speed;
+      $speed = 3 if $s == 21;
+      $speed = 2 if $s == 19;
+      $speed = 1 if $s == 18;
+      $speed = 0 if $s == 17;
+      
+      my $tlen = int(25000 / (4-0.25*$speed));
+      
+      my $padLen = $tlen - length($hdr0) - length($hdr) - length($data);
+      
+      $data .= "\0" x $padLen;
+   
+   return "   speed $speed\n   MFM-Track\n   bytes " . unpack("H*", $hdr0) . "\n   bytes " . unpack("H*", $hdr) . "\n   bytes " . unpack("H*", $data) . "\n";
 }
