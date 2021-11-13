@@ -22,6 +22,7 @@ if (@ARGV < 2)
        "        g64conv.pl <from.txt> <to.g64> [<speedRotationSpec>]\n".
        "        g64conv.pl <from.d64> <to.g64>\n".
        "        g64conv.pl <from.d71> <to.g64>\n".
+       "        g64conv.pl <from.d64> <to.d71>\n".
        "        g64conv.pl <from.reu> <to.g64>\n".
        "        g64conv.pl <from.g64> <to.reu> [<reduceSync>]\n".
        "        g64conv.pl <fromTemplate.txt> <to.g64> <from.d64>\n".
@@ -156,6 +157,18 @@ elsif ($from =~ /\.d64$/i && $to =~ /\.g71$/i)
    my $d64 = readfileRaw($from);
    my $g64 = txttog64($txt, $d64, "1571");
    writefileRaw($g64, $to);
+}
+elsif ($from =~ /\.d64$/i && $to =~ /\.d71$/i)
+{
+   my $txt = stddisk();
+   my $d64 = readfileRaw($from);
+   die if length($d64) != 683*256;
+   my $d71 = $d64 . ("\0" x (683*256));
+   substr($d71, 0x16503, 1) = "\x80";
+   substr($d71, 0x165DD, 35) = ("\x15" x 17) ."\x00". ("\x13" x 6) . ("\x12" x 6) . ("\x11" x 5);
+
+   substr($d71, 0x41000, 105) = ("\xFF\xFF\x1F" x 17) .("\x00" x 3). ("\xFF\xFF\x07" x 6) . ("\xFF\xFF\x03" x 6) . ("\xFF\xFF\x01" x 5);
+   writefileRaw($d71, $to);
 }
 elsif ($from =~ /\.reu$/i && $to =~ /\.g64$/i)
 {
