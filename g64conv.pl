@@ -833,18 +833,30 @@ elsif ($from =~ /\.scp$/i && $to =~ /\.txt$/i)
   my $isDoubleStep = $tracks[-1] < 90;
   my $addMarkPositionsAll = {};
   
+  my $scphack = (($tracks[-1] & 1) == 0) && ($sideToProcess == 0);
+  
   for my $rawtrack (@tracks)
   {
      my $trackNo;
+     my $side;
      if ($isDoubleStep)
      {
-        $trackNo = int($rawtrack/2) + 1;
+        if ($scphack)
+        {
+           $trackNo = $rawtrack/2 + 1;
+           $side = $sideToProcess;
+        }
+        else
+        {
+           $trackNo = int($rawtrack/2) + 1;
+           $side = $rawtrack & 1;
+        }
      }
      else
      {
         $trackNo = int($rawtrack/2)/2 + 1;
+        $side = $rawtrack & 1;
      }
-     my $side = $rawtrack & 1;
      next if $sideToProcess != 2 && $side != $sideToProcess;
      $side = 0 if $sideToProcess == 1;
      
@@ -946,18 +958,30 @@ elsif ($from =~ /.scp$/i && $to =~ /\.g((64)|(71))$/i)
   
   my $isDoubleStep = $tracks[-1] < 90;
   
+  my $scphack = (($tracks[-1] & 1) == 0) && ($sideToProcess == 0);
+  
   for my $rawtrack (@tracks)
   {
      my $trackNo;
+     my $side;
      if ($isDoubleStep)
      {
-        $trackNo = int($rawtrack/2) + 1;
+        if ($scphack)
+        {
+           $trackNo = $rawtrack/2 + 1;
+           $side = $sideToProcess;
+        }
+        else
+        {
+           $trackNo = int($rawtrack/2) + 1;
+           $side = $rawtrack & 1;
+        }
      }
      else
      {
         $trackNo = int($rawtrack/2)/2 + 1;
+        $side = $rawtrack & 1;
      }
-     my $side = $rawtrack & 1;
      next if $sideToProcess != 2 && $side != $sideToProcess;
      $side = 0 if $sideToProcess == 1;
      
@@ -1086,19 +1110,30 @@ elsif ($from eq "info" &&  $to =~ /\.scp$/i )
   my $scp = readscp($to);
   my @tracks = sort { $a <=> $b } keys %{ $scp->{tracks} };
   my $isDoubleStep = $tracks[-1] < 90;
-
+  my $scphack = (($tracks[-1] & 1) == 0);
+  
   for my $rawtrack (@tracks)
   {
      my $trackNo;
+     my $side;
      if ($isDoubleStep)
      {
-        $trackNo = int($rawtrack/2) + 1;
+        if ($scphack)
+        {
+           $trackNo = $rawtrack/2 + 1;
+           $side = 0;
+        }
+        else
+        {
+           $trackNo = int($rawtrack/2) + 1;
+           $side = $rawtrack & 1;
+        }
      }
      else
      {
         $trackNo = int($rawtrack/2)/2 + 1;
+        $side = $rawtrack & 1;
      }
-     my $side = $rawtrack & 1;
      
      my $fluxRaw = extractTrackFromScp($scp, $rawtrack);
      next unless defined $fluxRaw;
@@ -3804,7 +3839,7 @@ sub extractRotation
       return \%ret;
    }
    
-   if ($rotation == 1000)
+   if ($rotation == -1)
    {
       my $prevIndex1 = 0;
       my $prevIndex2 = @$refFlux;
@@ -4372,6 +4407,10 @@ sub parseRotationSpeedParameter
       elsif ( $range =~ /^r?([0-9]+)$/i)
       {
       	$ret{rotation}{default} = $1-0;
+      }
+      elsif ( $range =~ /^rs$/i)
+      {
+      	$ret{rotation}{default} = -1;
       }
       elsif ( $range =~ /^d([0-9]+)$/i)
       {
