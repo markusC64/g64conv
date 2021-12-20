@@ -5337,10 +5337,15 @@ sub getTrackFromSpeedAndBitstreeam
 
 sub txt2scp
 {
-   my ($txt, $tlen) = @_;
+   my ($txt, $params) = @_;
+   $params = parseRPMParameter($params);
+   
    my $p64 = parseP64txt($txt);
+   
+   my $tlen = $params->{rpm};
    $tlen = 6666666 unless defined $tlen;
    $tlen = int(2.4e9/$tlen) if $tlen < 400;
+   my $enableSCPhack = $params->{scphack};
 
    my $head = 0;
    my $start = undef;
@@ -5381,6 +5386,12 @@ sub txt2scp
       $head = 1;
    }
    
+   my $scphack = $enableSCPhack && !$haveHead1 && !$doublestep;
+   if ($scphack)
+   {
+      die "Cannot use scphack for images where the last track is a halftrack\n" if $end & 1;
+   }
+
    my $flags = 5;
    $flags += 2 if !$doublestep;
    
@@ -5389,15 +5400,16 @@ sub txt2scp
    if ($doublestep)
    {
       $rawstart = 2*($start-1);
-      $rawend = 2*($end-1)+1;
+      $rawend = 2*($end-1)+$haveHead1;
    }
    else
    {
       $rawstart = 4*($start-1);
-      $rawend = 4*($end-1)+1;
+      $rawend = 4*($end-1)+$haveHead1;
    }
    my $rawhead = ($head+1)%3;
 
+   
    my $header = "\x00" x 0x2b0;
    substr($header, 0, 3) = "SCP";
    substr($header, 3, 1) = "\x32";
@@ -5446,7 +5458,14 @@ sub txt2scp
    	}
    	else
    	{
-   	   $rawTrack = ($trackno-1) * 4 + $side;
+   	   if ($scphack)
+   	   {
+   	      $rawTrack = ($trackno-1) * 2;
+   	   }
+   	   else
+   	   {
+   	       $rawTrack = ($trackno-1) * 4 + $side;
+   	   }
    	}
    	
         if ($haveWriteSplicePos && defined $writeSplicePos)
@@ -6483,4 +6502,33 @@ sub parseMFMTrackAsRaw
       $data .= "\0" x $padLen;
    
    return "   speed $speed\n   MFM-Track\n   bytes " . unpack("H*", $hdr0) . "\n   bytes " . unpack("H*", $hdr) . "\n   bytes " . unpack("H*", $data) . "\n";
+}
+
+sub parseRPMParameter
+{
+   my $range = $_[0];
+   my %ret;
+   $ret{rpm} = 6666666;
+   $ret{scphack} = 0;
+   
+   my @range = split(",", $range);
+   
+   for my $range (@range)
+   {
+      if ( $range =~ /^([0-9\.]+)$/i)
+      {
+      	$ret{rpm} = $1;
+      }
+      elsif ( $range =~ /^scphack([01])$/i)
+      {
+      	$ret{scphack} = $1;
+      }
+      else
+      {
+      	print "UNKNOWN $range\n";
+      	die;
+      }
+   }
+
+  \%ret;
 }
