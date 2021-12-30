@@ -2,7 +2,7 @@
 
 ### Do not remove the following lines, they ensure that
 ### perl2exe (http://www.perl2exe.com ) can be used to
-### make an executable tha does not need an installed
+### make an executable that does not need an installed
 ### version of perl.
 
 #perl2exe_include "PerlIO.pm"
@@ -1296,6 +1296,11 @@ sub g64totxt
       $isMFM = 1 if $speed == 9;
       $isMFM = 1 if $speed == 10;
       $isMFM = 1 if $speed == 11;
+      ### TODO:
+      $isMFM = 3 if $speed == 12;
+      $isMFM = 3 if $speed == 13;
+      $isMFM = 3 if $speed == 14;
+      $isMFM = 3 if $speed == 15;
 
       if ($trackSize > 32767 && !$isMFM)
       {
@@ -1304,13 +1309,14 @@ sub g64totxt
       }
       
       $trackSize *= 8 if $isMFM == 1;
+      $trackSize *= 8 if $isMFM == 3;
 
       my $trackContent = substr($g64, $trackPosition+2, $trackSize);
       
       my $trackContentHex = unpack("H*", $trackContent);
       $trackContentHex =~ s/(..)/ $1/gc;
 
-      if ($speed > 11)
+      if ($speed > 15)
       {
          my $tmp = substr($g64, $speed, $tracksizeHdr/4);
 	 my $tmp2 = unpack("B*", $tmp);
@@ -1356,7 +1362,7 @@ sub g64totxt
       #print "Converting track $track\n";
 
       my $trackRet = "track $track\n";
-      if ($level == 0)
+      if ($level == 0 || $isMFM == 3)
       {
       	 $trackRet = "";
          if ($haveExtHeader)
@@ -1386,10 +1392,10 @@ sub g64totxt
       	    
       	    $trackRet .= "   speed 8\n $tmp";
       	 }
-      	 elsif ($level eq "00" || $isMFM == 1)
+      	 elsif ($level eq "00" || $isMFM == 1 || $isMFM == 3)
       	 {
             my $trackContentBin = unpack("B*", $trackContent);
-            if ($isMFM == 1)
+            if ($isMFM == 1 || $isMFM == 3)
             {
                my $bitsToRemove = ord(substr($trackContent, -1, 1));
                $trackContentBin = substr($trackContentBin, 0, length($trackContentBin) - $bitsToRemove);
@@ -1414,7 +1420,7 @@ sub g64totxt
          my $trackBin = pack("H*", $tmp);
 	 my $trackContentBin = unpack("B*", $trackBin);
          
-         if ($isMFM == 1)
+         if ($isMFM == 1 || $isMFM == 3)
          {
             my $bitsToRemove = ord(substr($trackBin, -1, 1));
             $trackContentBin = substr($trackContentBin, 0, length($trackContentBin) - $bitsToRemove);
@@ -2239,9 +2245,9 @@ sub txttog64
          }
 	 my $trk = ($curTrackNo+1)/2;
 	 
-	 unless ($speed eq "8" || $speed eq "9" ||  $speed eq "A" ||  $speed eq "B")
+	 unless ($speed eq "8" || $speed eq "9" ||  $speed eq "A" ||  $speed eq "B" ||  $speed eq "C" ||  $speed eq "D" ||  $speed eq "E" ||  $speed eq "F")
 	 {
-	    die "Track $trk length $len bits is not a multilpe of 8 bits\n" if $len % 8;
+	    die "Track $trk length $len bits is not a multiple of 8 bits, you should add ${\(8 - $len % 8)} bits or remove ${\($len %8)} bits.\n" if $len % 8;
 	 }
 	 my $tmp = (length($curTrack)-$beginat) % length($curTrack); 
 	 my $curTrack2 = substr($curTrack, $tmp) . substr($curTrack, 0, $tmp);
@@ -2318,6 +2324,10 @@ sub txttog64
             $speed = $1; #  if $1 >= 8;
             $speed = "A" if $1 == 10;
             $speed = "B" if $1 == 11;
+            $speed = "C" if $1 == 12;
+            $speed = "D" if $1 == 13;
+            $speed = "E" if $1 == 14;
+            $speed = "F" if $1 == 15;
 	 }
 	 else
 	 {
@@ -2325,6 +2335,10 @@ sub txttog64
 	    die if $speed == 9;
 	    die if $speed eq "A";
 	    die if $speed eq "B";
+	    die if $speed eq "C";
+	    die if $speed eq "D";
+	    die if $speed eq "E";
+	    die if $speed eq "F";
 	    my $newSpeed = $1 & 3;
 	    my $curSpeed = substr($speed, -1, 1);
 	    my $len1 = length($curTrack);
@@ -2352,6 +2366,10 @@ sub txttog64
 	    die if $speed == 9;
 	    die if $speed eq "A";
 	    die if $speed eq "B";
+	    die if $speed eq "C";
+	    die if $speed eq "D";
+	    die if $speed eq "E";
+	    die if $speed eq "F";
 	    my $newSpeed = $1 & 3;
 	    my $curSpeed = substr($speed, -1, 1);
 	    my $len1 = length($curTrack);
@@ -2583,6 +2601,54 @@ sub txttog64
 	    }
 	 }
       }
+      elsif ($line =~ /^extmfm (.*) (.*)$/ && defined $d64)
+      {
+         my $pos = hex($1);
+	 my $size = hex($2);
+	 
+         my $par = unpack("H*", );
+	 
+	 my $trackBin = substr($d64, $pos, $size);
+	 my $trackContentBin = unpack("B*", $trackBin);
+         my $actBit = substr($trackContentBin, 0, 1);
+	 if ($curTrack eq "")
+	 {
+            my $clock = $actBit ? "0": "c";
+            $curTrack .= $clock;
+	 }
+	 else
+	 {
+            my $lastBit = substr($curTrack, -1);
+            my $clock = ( $lastBit || $actBit) ? "0": "1";
+            $curTrack .= $clock;
+	 }
+	 $curTrack .= substr($trackContentBin, 0, 1);
+	 for (my $i=1; $i<length($trackContentBin); $i++)
+	 {
+	    my $lastBit = substr($trackContentBin, $i-1, 1);
+	    $actBit = substr($trackContentBin, $i, 1);
+            my $clock = ( $lastBit || $actBit) ? "0": "1";
+            $curTrack .= $clock;
+	    $curTrack .= $actBit;
+	 }
+	 
+	 $checksumBlock = 4 if $checksumBlock == 1;
+	 if ($checksumBlock == 4)
+	 {
+	    $mfmchecksum = crc16($mfmchecksum, $trackBin, 0x1021);
+            ...;
+	 }
+	 
+	 if ($checksumBlock == 1)
+	 {
+            my $tmp = pack("H*", $par);
+	    my @tmp = unpack("C*", $tmp);
+	    for my $i (@tmp)
+	    {
+	       $checksum ^= $i;
+	    }
+	 }
+      }
       elsif ($line =~ /^extbin (.*) (.*)$/ && defined $d64)
       {
          my $pos = hex($1);
@@ -2717,10 +2783,14 @@ sub txttog64
       my $trackSpeed3 = $trackSpeed;
       $trackSpeed3 = 10 if $trackSpeed eq "A";
       $trackSpeed3 = 11 if $trackSpeed eq "B";
+      $trackSpeed3 = 12 if $trackSpeed eq "C";
+      $trackSpeed3 = 13 if $trackSpeed eq "D";
+      $trackSpeed3 = 14 if $trackSpeed eq "E";
+      $trackSpeed3 = 15 if $trackSpeed eq "F";
       my $trackContent = $tracks[$i]->[1];
       my $mfmMark = $tracks[$i]->[2];
       
-      my $isMFMRaw = ($trackSpeed eq "8" || $trackSpeed eq "9" || $trackSpeed eq "A" || $trackSpeed eq "B");
+      my $isMFMRaw = ($trackSpeed eq "8" || $trackSpeed eq "9" || $trackSpeed eq "A" || $trackSpeed eq "B" || $trackSpeed eq "C" || $trackSpeed eq "D" || $trackSpeed eq "E" || $trackSpeed eq "F");
       if ($isMFMRaw)
       {
       	    my $len = length($trackContent); 
@@ -4919,6 +4989,9 @@ sub fluxtobitstream
       $alg = -1 if $speed == 9;
       $alg = -1 if $speed == 10;
       $alg = -1 if $speed == 11;
+      $alg = -2 if $speed == 12;
+      # TODO
+      die if $speed > 12;
    }
 
    $ret = fluxtobitstreamV3($flux, $speed, $param, $track, $level, $writeSplicePos) if $alg == 3;
@@ -4926,6 +4999,7 @@ sub fluxtobitstream
    $ret = fluxtobitstreamV1($flux, $speed, $rpm, $floppy8250) if $alg == 1;
    $ret = fluxtobitstreamV1($flux, $speed >= 4 ? 5.5 : 1.5, $rpm, $floppy8250) if $alg == 0;
    $ret = fluxtobitstreamMFMV1($flux, $speed, $rpm) if $alg == -1;
+   $ret = "//".fluxtobitstreamV1($flux, 0, $rpm, 0) if $alg == -2;
    
    $ret;
 }
