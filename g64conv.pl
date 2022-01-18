@@ -2425,8 +2425,33 @@ sub txttog64
    	 $even =~ s/(.)(.)/$2/g;
 	 
 	 $trackContentBin = $odd.$even;
+
+	 $checksumBlock = 4 if $checksumBlock == 1;
+	 if ($checksumBlock == 4 || $checksumBlock == 10)
+	 {
+	    my $trackContentHex = unpack "H*", pack "B*", $trackContentBin;
+            my $len =length($trackContentHex)/4;
+            for my $i (0..$len-1)
+            {
+               $checksum ^= unpack "n",  pack "H*", substr($trackContentHex, 4*$i, 4);
+            }
+	 }
 	 
-	 ## $curTrack .= $trackContentBin;
+	 if ($checksumBlock == 10)
+	 {
+	    $checksumBlock = 4;
+            my $crc = sprintf("%016b", $checksum);
+            $crc =~ s/(.)/0$1/gc;
+            
+	    my $odd = $crc;
+   	    $odd =~ s/(.)(.)/$1/g;
+	    my $even = $crc;
+   	    $even =~ s/(.)(.)/$2/g;
+	    $crc = $odd.$even;
+            
+            $trackContentBin = $crc . $trackContentBin;
+	 }
+
          my $actBit = substr($trackContentBin, 0, 1);
 	 if ($curTrack eq "")
 	 {
@@ -2449,12 +2474,65 @@ sub txttog64
 	    $curTrack .= $actBit;
 	 }
 	 
-	 #TODO
-	 #$checksumBlock = 4 if $checksumBlock == 1;
-	 #if ($checksumBlock == 4)
-	 #{
-	 #   $mfmchecksum = crc16($mfmchecksum, $trackBin, 0x1021);
-	 #}
+      }
+      elsif ($line =~ /^mfm-oddeven-checksum(.*)$/)
+      {
+         my $par = $1;
+	 $par =~ s/ //g;
+	 
+	 if (length($par) == 64)
+	 {
+            $curTrack .= $par;
+	 }
+	 elsif ($checksumBlock == 1 && $par eq "")
+	 {
+	    $checksumBlock = 10;
+	 }
+	 else
+	 {
+            my $trackContentBin;
+            if ($par eq "")
+            {
+            	$trackContentBin = sprintf "%016b", $checksum;
+            	$trackContentBin =~ s/(.)/0$1/gc;
+            }
+            else
+            {
+            	$trackContentBin = unpack "B*", pack "H*", $par;
+            }
+
+	    my $odd = $trackContentBin;
+   	    $odd =~ s/(.)(.)/$1/g;
+           
+	    my $even = $trackContentBin;
+   	    $even =~ s/(.)(.)/$2/g;
+	    
+	    $trackContentBin = $odd.$even;
+	    
+	    ## $curTrack .= $trackContentBin;
+            my $actBit = substr($trackContentBin, 0, 1);
+	    if ($curTrack eq "")
+	    {
+               my $clock = $actBit ? "0": "c";
+               $curTrack .= $clock;
+	    }
+	    else
+	    {
+               my $lastBit = substr($curTrack, -1);
+               my $clock = ( $lastBit || $actBit) ? "0": "1";
+               $curTrack .= $clock;
+	    }
+	    $curTrack .= substr($trackContentBin, 0, 1);
+	    for (my $i=1; $i<length($trackContentBin); $i++)
+	    {
+	       my $lastBit = substr($trackContentBin, $i-1, 1);
+	       $actBit = substr($trackContentBin, $i, 1);
+               my $clock = ( $lastBit || $actBit) ? "0": "1";
+               $curTrack .= $clock;
+	       $curTrack .= $actBit;
+	    }
+           
+	 }
       }
       elsif ($line =~ /^mfm-bytes (.*)$/)
       {
@@ -2553,7 +2631,6 @@ sub txttog64
 	 }
 
 	 $checksumBlock = 4 if $checksumBlock == 1;
-	 ## TODO
 	 if ($checksumBlock == 2)
 	 {
 	    $mfmchecksum = crc16($mfmchecksum, $trackBin, 0x1021);
@@ -2772,8 +2849,6 @@ sub txttog64
       }
       elsif ($line =~ /^fm-checksum(.*)$/)
       {
-# TODO
-##print "\n";
          my $par = $1;
 	 $par =~ s/ //g;
 
@@ -6198,6 +6273,12 @@ sub parseMFMRawTrack
            $state = 9;
            $comment = "0xFF Track Sector NoSectorsUntilEndOfWrite";
            $actualType = 7;
+           $crc = 0;
+           $instruction = "  begin-checksum";
+           for my $i (0..1)
+           {
+              $crc ^= unpack "n",  pack "H*", substr($bbits, 4*$i, 4);
+           }
            my $tmpBin = unpack("B*", pack "H*", $bbits);
            my $tmp1 = substr($tmpBin, 0, 16);
            my $tmp2 = substr($tmpBin, 16);
@@ -6215,6 +6296,10 @@ sub parseMFMRawTrack
            $comment = "Sector label (always 0)";
            $flush = 1;
            $actualType = 7;
+           for my $i (0..7)
+           {
+              $crc ^= unpack "n",  pack "H*", substr($bbits, 4*$i, 4);
+           }
            my $tmpBin = unpack("B*", pack "H*", $bbits);
            my $tmp1 = substr($tmpBin, 0, 64);
            my $tmp2 = substr($tmpBin, 64);
@@ -6231,7 +6316,12 @@ sub parseMFMRawTrack
            $state = 11;
            $comment = "Checksum Header";
            $flush = 1;
-           $actualType = 7;
+           $actualType = 9;
+           $crc = sprintf("%016b", $crc);
+           $crc =~ s/(.)/0$1/gc;
+           $crc = unpack "H*", pack "B*", $crc;
+           $crc =~ s/(..)/ $1/gc;
+
            my $tmpBin = unpack("B*", pack "H*", $bbits);
            my $tmp1 = substr($tmpBin, 0, 16);
            my $tmp2 = substr($tmpBin, 16);
@@ -6242,13 +6332,15 @@ sub parseMFMRawTrack
            }
            $bbits = unpack("H*", pack "B*", $tmpBin);;
            $bbits =~ s/(..)/ $1/gc;
+           $comment = sprintf("Checksum Header - wrong, should be%s", $crc) unless $crc eq $bbits;
         }
         elsif ($state == 11 && $actualType == 3)
         {
            $state = 12;
+           $instruction = "  end-checksum\n  begin-checksum";
            $comment = "Checksum Data";
            $flush = 1;
-           $actualType = 7;
+           $actualType = 9;
            my $tmpBin = unpack("B*", pack "H*", $bbits);
            my $tmp1 = substr($tmpBin, 0, 16);
            my $tmp2 = substr($tmpBin, 16);
@@ -6259,6 +6351,7 @@ sub parseMFMRawTrack
            }
            $bbits = unpack("H*", pack "B*", $tmpBin);;
            $bbits =~ s/(..)/ $1/gc;
+           $crc = $bbits;
         }
         elsif ($state == 12 && $actualType == 3)
         {
@@ -6267,6 +6360,19 @@ sub parseMFMRawTrack
            $flush = 1;
            $actualType = 7;
            my $tmpBin = unpack("B*", pack "H*", $bbits);
+           my $isCrc = $crc;
+           $crc = 0;
+
+           for my $i (0..255)
+           {
+              $crc ^= unpack "n",  pack "H*", substr($bbits, 4*$i, 4);
+           }
+           $crc = sprintf("%016b", $crc);
+           $crc =~ s/(.)/0$1/gc;
+           $crc = unpack "H*", pack "B*", $crc;
+           $crc =~ s/(..)/ $1/gc;
+           $comment2 = sprintf("Wrong crc, should be%s", $crc) unless $crc eq $isCrc;
+           
            my $tmp1 = substr($tmpBin, 0, 2048);
            my $tmp2 = substr($tmpBin, 2048);
            $tmpBin = "";
@@ -6290,6 +6396,7 @@ sub parseMFMRawTrack
         }
         elsif ($state == 13)
         {
+           $instruction = "  end-checksum";
            $comment = "Gap" ;
            $state = 4;
            $flush = 1;
@@ -6410,6 +6517,7 @@ sub parseMFMRawTrack
            if ($actualType == 6) { $ret .= "\n"; $bufferType = 0; $buffer = ""; }
            if ($bufferType == 7) { $ret .= "   mfm-oddeven$buffer\n"; $bufferType = 0; $buffer = ""; }
            if ($bufferType == 8) { $ret .= "   mfm-checksum$buffer\n"; $bufferType = 0; $buffer = ""; }
+           if ($bufferType == 9) { $ret .= "   mfm-oddeven-checksum$buffer\n"; $bufferType = 0; $buffer = ""; }
         }
         
         $ret .= "$instruction\n" if $instruction;
@@ -6424,6 +6532,7 @@ sub parseMFMRawTrack
            if ($actualType == 6) { $ret .= "   mfmsync-c2\n"; }
            if ($actualType == 7) { $buffer .= " " . $bbits; }
            if ($actualType == 8) { $buffer .= " " . $bbits; }
+           if ($actualType == 9) { $buffer .= " " . $bbits; }
         $bufferType = $actualType;
    }
 
@@ -6433,6 +6542,7 @@ sub parseMFMRawTrack
    if ($bufferType == 4) { $ret .= "   bytes$buffer\n"; $bufferType = 0; }
    if ($bufferType == 7) { $ret .= "   mfm-oddeven$buffer\n"; $bufferType = 0; }
    if ($bufferType == 8) { $ret .= "   mfm-checksum$buffer\n"; $bufferType = 0; }
+   if ($bufferType == 9) { $ret .= "   mfm-oddeven-checksum$buffer\n"; $bufferType = 0; }
 
    return "   begin-at $beginAt\n   speed $speed\n$ret\nend-track\n";
 }
