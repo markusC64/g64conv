@@ -87,6 +87,7 @@ if (@ARGV < 2)
        "          sstd        short for standard 1571 speed zones\n".
        
        "          d500        sets maximum delta in rotation detection\n".
+       "          e10         sets maximum epsilon in rotation correction\n".
        "          v250        sets flux range to verify rotation\n".
        "          ad1 or ad2  choose which algorithm to use for decoding\n".
        "          ad3         like ad2 but with more comments\n".
@@ -883,7 +884,7 @@ elsif ($from =~ /\.scp$/i && $to =~ /\.txt$/i)
      }
      else
      {
-        my $speed = getSpeedZone($Flux, $trackNo, $pass);
+        my $speed = getSpeedZone($Flux, $trackNo+128*$side, $pass);
         my $bitstream = fluxtobitstream($Flux, $speed, $pass, $trackNo+128*$side, $level);
         if (ref $bitstream)
         {
@@ -939,7 +940,7 @@ elsif ($from =~ /\.scp$/i && $to =~ /\.txt$/i)
        }
       writefile($txt, $to);
 }
-elsif ($from =~ /.scp$/i && $to =~ /\.g((64)|(71))$/i)
+elsif ($from =~ /\.scp$/i && $to =~ /\.g((64)|(71))$/i)
 {
    my $dest = "1541";
    $dest = "1571" if $to =~ /\.g71$/i;
@@ -991,7 +992,7 @@ elsif ($from =~ /.scp$/i && $to =~ /\.g((64)|(71))$/i)
      my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
      $Flux = reverseFlux($Flux) if $sideToProcess == 1;
 
-        my $speed = getSpeedZone($Flux, $trackNo, $level);
+        my $speed = getSpeedZone($Flux, $trackNo+128*$side, $level);
         my $bitstream = fluxtobitstream($Flux, $speed, $level, $trackNo+128*$side, 1);
         my $addMarkPositions = undef;
         if (ref $bitstream)
@@ -4177,7 +4178,10 @@ sub extractRotation
       my $bestError = undef;
       my $bestOffset = undef;
       
-      for my $offset (-10..10)
+      my $epsilon1 = $spec->{epsilon1};
+      my $epsilon2 = $spec->{epsilon2};
+      
+      for my $offset ($epsilon1..$epsilon2)
       {
       	my $delta = abs ($refFlux->[$prevIndex2+$offset]{FluxSum} - $refFlux->[$prevIndex2]{FluxSum});
       	next if $delta > $spec->{deltaMax};
@@ -4659,6 +4663,8 @@ sub parseRotationSpeedParameter
    $ret{scpside} = 0;
    $ret{nomfm} = 0;
    $ret{floppy8250} = 0;
+   $ret{epsilon1} = -10;
+   $ret{epsilon2} = 10;
    
    my @range = split(",", $range);
    
@@ -4695,6 +4701,18 @@ sub parseRotationSpeedParameter
       	$ret{verifyRange1} = -$1 unless defined $2;
       	$ret{verifyRange2} = $1;
       	$ret{verifyRange2} = $2 if defined $2;
+      }
+      elsif ( $range =~ /^e(-?[0-9]+)(?:\.\.(-?[0-9]+))?$/i)
+      {
+      	if (defined($2))
+      	{
+      	   die "Empty verification range\n" unless $1 < $2;
+      	}
+      	
+      	$ret{epsilon1} = $1;
+      	$ret{epsilon1} = -$1 unless defined $2;
+      	$ret{epsilon2} = $1;
+      	$ret{epsilon2} = $2 if defined $2;
       }
       elsif ( $range =~ /^r?([0-9]+)$/i)
       {
@@ -4751,7 +4769,7 @@ sub parseRotationSpeedParameter
       {
             $ret{scpside} = $1;
       }
-      elsif ( $range =~ /^([0-9]+(?:\.5)?)(?:\.\.([0-9]+(?:\.5)?))?(?:\/([0-9]+(?:\.5)))?=([rs])(m|a|[0-9]+)$/i)
+      elsif ( $range =~ /^([0-9]+(?:\.5)?)(?:\.\.([0-9]+(?:\.5)?))?(?:\/([0-9]+(?:\.5)?))?=([rs])(m|a|[0-9]+)$/i)
       {
       	# Parameter: Start, End, Incr, "rs", val
       	my ($start, $end, $incr, $rs, $val) = ($1, $2, $3, $4, $5);
@@ -4763,8 +4781,9 @@ sub parseRotationSpeedParameter
       	{
            $is8250 = 1;
            $incr = 0.5;
-           $start = ($start+1)/2;
-           $end = ($end+1)/2;
+           $start = ($start%128+1)/2+128*int($start/128);
+           $end = ($end%128+1)/2+128*int($end/128);
+           print "Debug: $start .. $end\n";
       	}
       	
       	unless (defined $incr)
@@ -4794,7 +4813,7 @@ sub parseRotationSpeedParameter
            }
         }
       }
-      elsif ( $range =~ /^([0-9]+(?:\.5)?)(?:\.\.([0-9]+(?:\.5)?))?(?:\/([0-9]+(?:\.5)))?:([0-9]+(?:\.5)?)(?:\.\.([0-9]+(?:\.5)?))?(?:\/([0-9]+(?:\.5)))?=s([0-9]+)$/i)
+      elsif ( $range =~ /^([0-9]+(?:\.5)?)(?:\.\.([0-9]+(?:\.5)?))?(?:\/([0-9]+(?:\.5)?))?:([0-9]+(?:\.5)?)(?:\.\.([0-9]+(?:\.5)?))?(?:\/([0-9]+))?=s([0-9]+)$/i)
       {
       	my ($start, $end, $incr, $startS, $endS, $incrS, $val) = ($1, $2, $3, $4, $5, $6, $7);
       	
@@ -5641,6 +5660,7 @@ sub txt2scp
    $tlen = 6666666 unless defined $tlen;
    $tlen = int(2.4e9/$tlen) if $tlen < 400;
    my $enableSCPhack = $params->{scphack};
+   my $flip = $params->{flip};
 
    my $head = 0;
    my $start = undef;
@@ -5667,6 +5687,11 @@ sub txt2scp
    	$end = $trackno if $end < $trackno;
    }
    die if $end > 83;
+   
+   if ($flip)
+   {
+      ($haveHead0, $haveHead1) = ($haveHead1, $haveHead0);
+   }
    
    if ($haveHead0 && $haveHead1)
    {
@@ -5736,6 +5761,7 @@ sub txt2scp
         $writeSplicePos /= 3200000 if defined $writeSplicePos;
         
    	my $Flux = normalizeP64Flux ($p64track->{flux});
+   	$Flux = reverseFlux($Flux) if $flip;
 
    	my $trackno = $p64track->{track};
 
@@ -5745,6 +5771,7 @@ sub txt2scp
    	   $side = 1;
    	   $trackno -= 128;
    	}
+   	$side = 1 - $side if $flip;
    	
    	my $rawTrack;
    	if ($doublestep)
@@ -6995,6 +7022,7 @@ sub parseRPMParameter
    my %ret;
    $ret{rpm} = 6666666;
    $ret{scphack} = 0;
+   $ret{flip} = 0;
    
    my @range = split(",", $range);
    
@@ -7007,6 +7035,10 @@ sub parseRPMParameter
       elsif ( $range =~ /^scphack([01])$/i)
       {
       	$ret{scphack} = $1;
+      }
+      elsif ( $range =~ /^flip$/i)
+      {
+      	$ret{flip} = 1;
       }
       else
       {
