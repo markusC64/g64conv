@@ -1,0 +1,60 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  build-windows-32:
+    runs-on: windows-2019
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Checkout private tools
+      uses: actions/checkout@v2
+      with:
+        repository: markusC64/perl-win
+        token: ${{ secrets.GH_PAT }} # `GH_PAT` is a secret that contains your PAT
+        path: perl
+
+    - uses: DuckSoft/extract-7z-action@v1.0
+      with:
+        pathSource: perl/strawberryperl-5.32-32.7z 
+        pathTarget: C:\
+
+    - name: Build dist
+      run: cmd.exe /c perl\build32.cmd
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: g64conv-win32
+        path: |
+           g64conv.exe
+           templates/
+
+  build-windows-64:
+    runs-on: windows-2019
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Checkout private tools
+      uses: actions/checkout@v2
+      with:
+        repository: markusC64/perl-win
+        token: ${{ secrets.GH_PAT }} # `GH_PAT` is a secret that contains your PAT
+        path: perl
+
+    - uses: DuckSoft/extract-7z-action@v1.0
+      with:
+        pathSource: perl/strawberryperl-5.32-64.7z 
+        pathTarget: C:\
+
+    - name: Build dist
+      run: cmd.exe /c perl\build64.cmd
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: g64conv-win64
+        path: |
+           g64conv.exe
+           templates/
