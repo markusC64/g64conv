@@ -6089,7 +6089,7 @@ sub fluxtobitstreamMFMV1
 
          my $val = $tmeToFlux / 16;
          
-         my $num = int(($val + 0.6) / 2 - 1);
+         my $num = int(($val + 0.8) / 2 - 1);
          $bits .= "0" x $num;
          $bits .= "1";
    }
@@ -7346,7 +7346,7 @@ sub fluxtobitstreamFMV1
       
          my $val = $tmeToFlux / 32;
          
-         my $num = int(($val + 0.6) / 2 - 1);
+         my $num = int(($val + 0.8) / 2 - 1);
          $bits .= "0" x $num;
          $bits .= "1";
    }
