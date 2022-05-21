@@ -3208,6 +3208,7 @@ sub parseTrack2
    my $track = $_[0];
    
    my %sector = ();
+   my %sectorID = ();
    
    unless ($track =~ /^(.*?)(1111111111)(.*)$/ )
    {
@@ -3231,6 +3232,7 @@ sub parseTrack2
    }
    
    my $sector = undef;
+   my $id = undef;
 
    while ($track ne "")
    {
@@ -3273,6 +3275,8 @@ sub parseTrack2
       {
 	 my $trk = undef;
 	 my $sec = undef;
+	 my $id1 = undef;
+	 my $id2 = undef;
 	 
 	 my $checksum = 0;
 	 
@@ -3309,6 +3313,8 @@ sub parseTrack2
 	    {
                $sec = "$a$b" if $i == 1;
 	       $trk = "$a$b" if $i == 2;
+	       $id2 = "$a$b" if $i == 3;
+	       $id1 = "$a$b" if $i == 4;
 	    }
 	 }
 	 if (defined($trk) && defined($sec))
@@ -3318,16 +3324,19 @@ sub parseTrack2
 	       if ($checksum == 0)
 	       {
 	          $sector = [ hex($trk), hex($sec) ];
+	          $id = $id1.$id2;
 	       }
 	       else
 	       {
 	          $sector = undef;
+	          $id = undef;
 	          $sector{hex($trk)}{hex($sec)} = 9;
 	       }
 	    }
 	    else
 	    {
 	       $sector = undef;
+	       $id = undef;
 	       $sector{hex($trk)}{hex($sec)} = 5;
 	    }
 	 }
@@ -3376,6 +3385,8 @@ sub parseTrack2
 	 else
 	 {
             $sector{ $sector->[0] }{ $sector->[1] } = pack("H*", $gcr) if (defined $sector) && $gcr;
+
+            $sectorID{ $sector->[0] }{ $sector->[1] } = $id if (defined $sector) && $gcr && (defined $id);
 	 }
          $sector = undef;
       }
@@ -3388,6 +3399,8 @@ sub parseTrack2
       $track = $trackRest;
    }
 
+   return (\%sector, \%sectorID) if wantarray;
+
    \%sector;
 }
 
@@ -3398,6 +3411,7 @@ sub g64tod64
    $noBlocks = 683 unless defined $noBlocks;
    my $ret = ("\xDE\xAD\xBE\xEF" x 64) x $noBlocks;
    my $error = "\x02" x $noBlocks;
+   my @ids;
    
    my $signature = substr($g64, 0, 8);
    return undef unless ($signature eq 'GCR-1541' || $signature eq 'GCR-1571');
@@ -3437,7 +3451,9 @@ sub g64tod64
       $tmp =~ s/ //g;
       my $trackBin = pack("H*", $tmp);
       my $trackContentBin = unpack("B*", $trackBin);
-      $tmp = parseTrack2($trackContentBin);
+      my $ids;
+      #$tmp = parseTrack2($trackContentBin);
+      ($tmp, $ids) = parseTrack2($trackContentBin);
       
       for my $t (sort { $a <=> $b } keys %$tmp)
       {
@@ -3455,6 +3471,7 @@ sub g64tod64
 	    {
 	       substr($ret, $offset2, 256) = $content;
 	       substr($error, $offset1, 1) = "\1";
+	       $ids[$offset1] = $ids->{$t}{$s};
 	    }
 	    else
 	    {
@@ -3462,6 +3479,15 @@ sub g64tod64
 	    }
 	 } 
       }      
+   }
+   
+   my $id = $ids[357];
+   if (defined $id)
+   {
+      for my $i (0..$#ids)
+      {
+      	substr($error, $i, 1) = "\x0B" if $id ne $ids[$i];
+      }
    }
    
    return $ret if $error eq "\1" x $noBlocks;
