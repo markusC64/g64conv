@@ -1096,7 +1096,7 @@ elsif ($from eq "verify" &&  $to =~ /\.[dg]71$/i )
    if ($to =~ /.g71$/i)
    {
       my $range = $level;
-      $range = "1..35,43..79" unless defined $range;
+      $range = "1..35,43..77" unless defined $range;
       my $range2 = parseRange($range);
       $inp = g64tod71($inp, $range2, $pass);
    }
