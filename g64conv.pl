@@ -566,7 +566,6 @@ elsif ($from =~ /\\?\?\.\?\.raw$/i && $to =~ /\.g((64)|(71))$/i)
      my $fluxRaw = parseKryofluxRawFile($track);
      my $fluxMetadata = extractRotation($fluxRaw, $level, $trackNo+128*$side);
      my $Flux = kryofluxNormalize($fluxRaw, $fluxMetadata);
-     $Flux = reverseFlux($Flux) if $side == 1;
 
      my $speed = getSpeedZone($Flux, $trackNo+128*$side, $level);
      my $bitstream = fluxtobitstream($Flux, $speed, $level, $trackNo+128*$side, 1);
@@ -3429,6 +3428,17 @@ sub g64tod64
 		   19, 19, 19, 19, 18,  18, 18, 18, 18, 18,
 		   17, 17, 17, 17, 17,  17, 17, 17, 17, 17);
 
+   my $maxTrack = 0;
+   {
+      my $s = 0;
+      while ($maxTrack <= 40)
+      {
+         $s += $sectors[$maxTrack];
+         $maxTrack++;
+         last if $s >= $noBlocks;
+      }
+   }
+
    for (my $i=1; $i<$notracks; $i++)   
    {
       my $track = ($i+1)/2;
@@ -3458,7 +3468,7 @@ sub g64tod64
       for my $t (sort { $a <=> $b } keys %$tmp)
       {
          next if $t < 1;
-	 next if $t > 35;
+	 next if $t > $maxTrack;
 	 my $tmp2 = $tmp->{$t};
 	 for my $s (sort { $a <=> $b } keys %$tmp2)
 	 {
@@ -5788,6 +5798,8 @@ sub txt2scp
         
    	my $Flux = normalizeP64Flux ($p64track->{flux});
    	$Flux = reverseFlux($Flux) if $flip;
+### FIXME
+   	$writeSplicePos = 1 - $writeSplicePos if $flip && defined $writeSplicePos;
 
    	my $trackno = $p64track->{track};
 
