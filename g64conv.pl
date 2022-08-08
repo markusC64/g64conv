@@ -5121,11 +5121,11 @@ sub fluxtobitstreamV3
       }
       if ($I == 0)
       {
+         $bits = "";
          $bits = chr(65+$speed) if $isMultispeed;
          $pos = 0;
          #print "DEBUG: $tme\n";
          %remarks = ();
-         $bits .= chr(65+$speed) if $isMultispeed;
          $writeSpliceDone = !defined $writeSplicePos;
          $writeSplicePos += $tme if defined $writeSplicePos;
          $syncCnt = 0;
