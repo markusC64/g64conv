@@ -6,10 +6,10 @@ jobs:
   build-windows-32:
     runs-on: windows-2019
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Checkout private tools
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: markusC64/perl-win
         token: ${{ secrets.GH_PAT }} # `GH_PAT` is a secret that contains your PAT
@@ -24,7 +24,7 @@ jobs:
       run: cmd.exe /c perl\build32.cmd
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: g64conv-win32
         path: |
@@ -34,10 +34,10 @@ jobs:
   build-windows-64:
     runs-on: windows-2019
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Checkout private tools
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: markusC64/perl-win
         token: ${{ secrets.GH_PAT }} # `GH_PAT` is a secret that contains your PAT
@@ -52,7 +52,7 @@ jobs:
       run: cmd.exe /c perl\build64.cmd
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: g64conv-win64
         path: |
