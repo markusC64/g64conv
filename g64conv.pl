@@ -1719,7 +1719,7 @@ sub parseTrack
 	       $ret .= "   begin-checksum\n";
 	       $ret .= "&&&&\n";
 	       $ret .= "      checksum $a$b\n" if (defined $a) && (defined $b);
-	       $ret .= "      checksum $e$f\n" unless (defined $a) && (defined $b);
+	       $ret .= "      ; checksum\n      bits $e$f\n" unless (defined $a) && (defined $b);
 	       $checksum = hex("$a$b") if (defined $a) && (defined $b);
 	       $checksumImage = $checksum;
 	    }
@@ -1993,7 +1993,7 @@ sub parseTrack
                   }
 
 	          $ret .= "      checksum $a$b\n" if (defined $a) && (defined $b);
-	          $ret .= "      checksum $e$f\n" unless (defined $a) && (defined $b);
+	          $ret .= "      ; checksum\n      bits $e$f\n" unless (defined $a) && (defined $b);
                   $ret .= "   end-checksum\n";
 		  $ret .= "   ; invalid checksum\n" if $checksum;
 		  $gcr = "";
@@ -2825,17 +2825,6 @@ sub txttog64
 	 if ($checksumBlock == 4)
 	 {
 	    $mfmchecksum = crc16($mfmchecksum, $trackBin, 0x1021);
-            ...;
-	 }
-	 
-	 if ($checksumBlock == 1)
-	 {
-            my $tmp = pack("H*", $par);
-	    my @tmp = unpack("C*", $tmp);
-	    for my $i (@tmp)
-	    {
-	       $checksum ^= $i;
-	    }
 	 }
       }
       elsif ($line =~ /^extbin (.*) (.*)$/ && defined $d64)
@@ -7313,6 +7302,8 @@ sub parseFMRawTrack
 
            $flush=1 if $bytesInState == 2+$sectorsize;
            $comment = "checksum" if $bytesInState == 2+$sectorsize;
+           $actualType = 9 if $bytesInState == 2+$sectorsize;
+           $actualType = 9 if $bytesInState == 3+$sectorsize;
 
            $flush=1 if $bytesInState == 4+$sectorsize;
            $comment = "Gap" if $bytesInState == 4+$sectorsize;
@@ -7365,8 +7356,8 @@ sub parseFMRawTrack
    }
 
    if ($bufferType == 1) { $ret .= "   bits $buffer\n"; $bufferType = 0; }
-   if ($bufferType == 2) { $ret .= "   mfm-bits $buffer\n"; $bufferType = 0; }
-   if ($bufferType == 3) { $ret .= "   mfm-bytes$buffer\n"; $bufferType = 0; }
+   if ($bufferType == 2) { $ret .= "   fm-bits $buffer\n"; $bufferType = 0; }
+   if ($bufferType == 3) { $ret .= "   fm-bytes$buffer\n"; $bufferType = 0; }
    if ($bufferType == 4) { $ret .= "   bytes$buffer\n"; $bufferType = 0; }
    if ($bufferType == 9) { $ret .= "   fm-checksum$buffer\n"; $bufferType = 0; }
    return "   begin-at $beginAt\n   speed $speed\n$ret\nend-track\n";
