@@ -3082,7 +3082,7 @@ sub stddisk
       $ret .= "   speed 2\n" if $s == 19;
       $ret .= "   speed 1\n" if $s == 18;
       $ret .= "   speed 0\n" if $s == 17;
-      $ret .= "   begin-at 0\n";
+      $ret .= "   begin-at 8\n";
       
       my $j;
       for ($j = 0; $j < $s; $j++)
@@ -3148,7 +3148,7 @@ sub stddisk1571
       $ret .= "   speed 2\n" if $s == 19;
       $ret .= "   speed 1\n" if $s == 18;
       $ret .= "   speed 0\n" if $s == 17;
-      $ret .= "   begin-at 0\n";
+      $ret .= "   begin-at 8\n";
       
       my $j;
       for ($j = 0; $j < $s; $j++)
@@ -3156,10 +3156,10 @@ sub stddisk1571
          my $extraspace = "";
 	 if ($j == $s-1)
 	 {
-	    $extraspace = "   bytes" . (" 55" x 90) . "\n" if $i < 18;
-	    $extraspace = "   bytes" . (" 55" x 264) . "\n" if $i >= 18 && $i < 25;
-	    $extraspace = "   bytes" . (" 55" x 150) . "\n" if $i >= 25 && $i < 31;
-	    $extraspace = "   bytes" . (" 55" x 96) . "\n" if $i > 30;
+	    $extraspace = "   bytes" . (" 55" x 90) . "\n" if $t < 18;
+	    $extraspace = "   bytes" . (" 55" x 264) . "\n" if $t >= 18 && $t < 25;
+	    $extraspace = "   bytes" . (" 55" x 150) . "\n" if $t >= 25 && $t < 31;
+	    $extraspace = "   bytes" . (" 55" x 96) . "\n" if $t > 30;
          }
          $ret .="   sync 32\n   gcr 08\n"
 	       ."   begin-checksum\n      checksum\n"
