@@ -93,7 +93,7 @@ if (@ARGV < 2)
        "          ad3         like ad2 but with more comments\n".
        "          rpm300      sets the decoders rpm\n".
        "          scpside0    sets side to process in case of scp file\n".
-       "                      0=first, 1=secons, 2=bith\n".
+       "                      0=first, 1=second, 2=both\n".
        "        or a comma separated list of the ones before.\n"
        ;
 }
