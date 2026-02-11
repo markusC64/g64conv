@@ -24,7 +24,7 @@ jobs:
       run: cmd.exe /c perl\build32.cmd
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: g64conv-win32
         path: |
@@ -52,7 +52,7 @@ jobs:
       run: cmd.exe /c perl\build64.cmd
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: g64conv-win64
         path: |
